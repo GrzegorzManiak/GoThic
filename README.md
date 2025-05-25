@@ -1,3 +1,6 @@
+[![Go Report Card](https://goreportcard.com/badge/github.com/grzegorzmaniak/gothic)](https://goreportcard.com/report/github.com/grzegorzmaniak/gothic)
+
+
 # GoThic - Go Token Handler for Identity and Control
 
 GoThic is a Go library designed to provide robust session management, CSRF (Cross-Site Request Forgery) protection, and RBAC (Role-Based Access Control) for web applications, particularly those built with frameworks like Gin. It focuses on security, extensibility, and a clear request processing lifecycle.
