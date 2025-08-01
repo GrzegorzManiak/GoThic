@@ -38,9 +38,8 @@ func main() {
 		core.ExecuteRoute(ctx, baseRoute, BasicActionHandlerConfig, mySessionManager, BasicActionHandler)
 	})
 
-	router.GET("/auth", func(ctx *gin.Context) {
-		core.ExecuteRoute(ctx, baseRoute, AuthenticatedResourceHandlerConfig, mySessionManager, AuthenticatedResourceHandler)
-	})
+	// - Or Shorthand version
+	core.GET(router, "/auth", baseRoute, AuthenticatedResourceHandlerConfig, mySessionManager, AuthenticatedResourceHandler)
 
 	httpAddr := fmt.Sprintf("%s:%s", "localhost", "8080")
 	if err := router.Run(httpAddr); err != nil {
