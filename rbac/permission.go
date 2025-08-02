@@ -9,6 +9,7 @@ const (
 	PermissionExecute  = "execute"
 	PermissionUpload   = "upload"
 	PermissionDownload = "download"
+	PermissionAll      = "all" // - Special permission that allows all actions on a resource
 )
 
 type Permission struct {
@@ -19,6 +20,11 @@ type Permission struct {
 func (p *Permission) IsValid() bool {
 	if p.Resource == "" || p.Action == "" {
 		return false
+	}
+
+	if p.Resource == PermissionAll {
+		// - If the resource is "all", it can be used with any action.
+		return true
 	}
 
 	switch p.Action {
