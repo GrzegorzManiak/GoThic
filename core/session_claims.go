@@ -11,7 +11,7 @@ type SessionClaims struct {
 	// SetClaim and GetClaim methods to set and get claims.
 	Claims map[string]string
 
-	// HasSession indicates if the session is valid, this may seem odd, but implicity
+	// HasSession indicates if the session is valid, this may seem odd, but implicitly
 	// is not a good security measure, so we need to explicitly set this to true or false.
 	HasSession bool
 }
