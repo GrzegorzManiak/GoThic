@@ -122,11 +122,12 @@ func BasicActionHandler(input *ExampleInput, data *AppHandlerContext) (*ExampleO
 var AuthenticatedResourceHandlerConfig = &core.APIConfiguration{
 	SessionRequired: true,
 	Allow:           []string{"guest_session", "user_session"},
-	Permissions: &[]rbac.Permission{
-		{Action: rbac.PermissionRead, Resource: "resource1"},
-		{Action: rbac.PermissionRead, Resource: "session_data"},
+	Permissions: rbac.Permissions{
+		"session_data": rbac.Read | rbac.Create,
+		"resource1":    rbac.Read,
 	},
-	Roles: &[]string{},
+	RbacPolicy: rbac.PermissionsOrRole,
+	Roles:      &[]string{},
 }
 
 // AuthenticatedResourceOutput defines the output for a handler that exposes authenticated user/session data.

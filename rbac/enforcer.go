@@ -3,64 +3,89 @@ package rbac
 import (
 	"context"
 	"fmt"
+	"go.uber.org/zap"
 )
 
-// checkAllPermissions checks if all permissions in requiredPerms are present in availablePerms.
-func checkAllPermissions(availablePerms []Permission, requiredPerms []Permission) bool {
-	// - If no permissions are required, access is granted.
-	if len(requiredPerms) == 0 {
-		return true
-	}
+// checkAllPermissions checks if all permissions in requiredPermissions are present in availablePermissions.
+func checkAllPermissions(availablePermissions Permissions, requiredPermissions Permissions) bool {
+	for resource, requiredBits := range requiredPermissions {
+		availableBits, ok := availablePermissions[resource]
+		if !ok {
+			// - We could do an 'all' check here, but this would be hidden functionality and
+			// not everyone would expect it.
+			return false
+		}
 
-	// - If there are more required permissions than available permissions,
-	if len(availablePerms) < len(requiredPerms) {
-		return false
-	}
-
-	// - For efficient lookup, convert availablePerms to a map (acting as a set).
-	availableSet := make(map[Permission]bool, len(availablePerms))
-	for _, p := range availablePerms {
-		availableSet[p] = true
-	}
-
-	// - Check if all required permissions are present in the available set.
-	for _, reqP := range requiredPerms {
-		if !availableSet[reqP] {
+		//  0 Check if all required bits are present
+		if availableBits&requiredBits != requiredBits {
 			return false
 		}
 	}
-
-	// - If all required permissions are found in the available set, access is granted.
 	return true
 }
 
-// checkAnyRole checks if the subject is a member of at least one of the roles in requiredRolesList.
-func checkAnyRole(subjectActualRoles []string, requiredRolesList []string) bool {
+// roleCheck checks if the subject is a member of at least one of the roles in routeRolesList.
+func roleCheck(subjectRoles []string, routeRolesList map[string]bool, routeRbacPolicy RouteRbacPolicy) bool {
 	// - If no roles are required, access is granted.
-	if len(requiredRolesList) == 0 {
+	if len(routeRolesList) == 0 {
 		return false
 	}
 
 	// - If the subject has no roles, they cannot match any role in the required list.
-	if len(subjectActualRoles) == 0 {
+	if len(subjectRoles) == 0 {
 		return false
 	}
 
-	// - For efficient lookup, convert subjectActualRoles to a map (acting as a set).
-	subjectRolesSet := make(map[string]bool, len(subjectActualRoles))
-	for _, r := range subjectActualRoles {
-		subjectRolesSet[r] = true
-	}
-
-	// - Check if the subject has at least one of the required roles.
-	for _, reqR := range requiredRolesList {
-		if subjectRolesSet[reqR] {
-			return true
+	switch routeRbacPolicy {
+	// - Check if the subject has any of the required roles.
+	case PermissionsOrRole,
+		PermissionsAndRole:
+		for _, subjectRole := range subjectRoles {
+			if _, found := routeRolesList[subjectRole]; found {
+				return true
+			}
 		}
+
+	// - Check if the subject has all the required roles.
+	case PermissionsOrAllRoles,
+		PermissionsAndAllRoles:
+		for requiredRole := range routeRolesList {
+			roleFound := false
+			for _, subjectRole := range subjectRoles {
+				if subjectRole == requiredRole {
+					roleFound = true
+					break
+				}
+			}
+
+			// - If any required role is not found in the subject's roles, access is denied.
+			if !roleFound {
+				return false
+			}
+		}
+
+	default:
+		zap.L().Warn("Unknown RBAC policy", zap.Int("policy", int(routeRbacPolicy)))
+		return false // - If the policy is unknown, deny access.
 	}
 
 	// - If none of the required roles are found in the subject's roles, access is denied.
 	return false
+}
+
+// mergeRolePermissions fetches permissions for each role in subjectRoles and merges them into a single Permissions map.
+func mergeRolePermissions(ctx context.Context, subjectRoles []string, rbacManager Manager) (Permissions, error) {
+	mergedPermissions := make(Permissions)
+	for _, role := range subjectRoles {
+		rolePerms, err := GetRolePermissions(ctx, role, rbacManager)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get permissions for role '%s': %w", role, err)
+		}
+		for resource, bits := range rolePerms {
+			mergedPermissions[resource] |= bits
+		}
+	}
+	return mergedPermissions, nil
 }
 
 // CheckPermissions verifies if a subject meets the required permissions and/or roles
@@ -70,89 +95,61 @@ func CheckPermissions(
 	rbacManager Manager,
 	subjectIdentifier string,
 	rbacCacheId string,
-	apiConfigRequiredPermissions *[]Permission,
-	apiConfigRequiredRoles *[]string,
+	requiredPermissions Permissions,
+	requiredRoles map[string]bool,
+	policy RouteRbacPolicy,
 ) (bool, error) {
 
-	// - Prevent nil pointer dereference
-	var requiredPerms []Permission
-	if apiConfigRequiredPermissions != nil {
-		requiredPerms = *apiConfigRequiredPermissions
-	}
-
-	var requiredRolesFromConfig []string
-	if apiConfigRequiredRoles != nil {
-		requiredRolesFromConfig = *apiConfigRequiredRoles
-	}
-
-	// - If the API configuration requires no specific permissions AND no specific roles
-	// for this particular RBAC check, then this check is considered passed
-	if len(requiredPerms) == 0 && len(requiredRolesFromConfig) == 0 {
+	// - If no permissions or roles are required, access is granted
+	if len(requiredPermissions) == 0 && len(requiredRoles) == 0 {
 		return true, nil
 	}
 
-	// - Fetch subject's actual direct permissions and their actual assigned roles ONCE.
-	subjectDirectPermissions, subjectAssignedRoles, err := FetchSubjectRolesAndPermissions(ctx, subjectIdentifier, rbacCacheId, rbacManager)
+	// - Fetch subject's roles and direct permissions
+	subjectPermissions, subjectRoles, err := FetchSubjectRolesAndPermissions(ctx, subjectIdentifier, rbacCacheId, rbacManager)
 	if err != nil {
-		return false, fmt.Errorf("failed to fetch subject's roles and direct permissions for '%s': %w", subjectIdentifier, err)
+		return false, fmt.Errorf("failed to fetch subject roles/permissions for '%s': %w", subjectIdentifier, err)
 	}
 
-	// - Ensure slices are not nil for easier handling, even if empty.
-	if subjectDirectPermissions == nil {
-		subjectDirectPermissions = &[]Permission{}
+	if subjectPermissions == nil {
+		subjectPermissions = Permissions{}
 	}
 
-	if subjectAssignedRoles == nil {
-		subjectAssignedRoles = &[]string{}
+	if subjectRoles == nil {
+		subjectRoles = &[]string{}
 	}
 
-	// - Subject has ANY of the roles specified as sufficient by the API config
-	if checkAnyRole(*subjectAssignedRoles, requiredRolesFromConfig) {
-		return true, nil
-	}
-
-	// - Subject directly has ALL required permissions
-	if checkAllPermissions(*subjectDirectPermissions, requiredPerms) {
-		return true, nil
-	}
-
-	// - Combined permissions from ALL the subject's assigned roles
-	hasAnyPermissions := len(*subjectAssignedRoles) > 0 && len(*subjectDirectPermissions) > 0
-	if len(requiredPerms) == 0 || !hasAnyPermissions {
-		return false, nil
-	}
-
-	allPermissionsFromSubjectRolesSet := make(map[Permission]bool)
-
-	for _, subjectRoleName := range *subjectAssignedRoles {
-		permissionsForOneRole, rolePermErr := GetRolePermissions(ctx, subjectRoleName, rbacManager)
-		if rolePermErr != nil {
-			return false, fmt.Errorf("failed to get permissions for role '%s': %w", subjectRoleName, rolePermErr)
+	// - Check roles
+	hasRole := roleCheck(*subjectRoles, requiredRoles, policy)
+	switch policy {
+	case PermissionsOrRole, PermissionsOrAllRoles:
+		if hasRole {
+			// - The roleCheck function already accounts for the RBAC policy. If the policy
+			//   allows access with a role and the subject has it, we can return early.
+			return true, nil
 		}
 
-		if permissionsForOneRole == nil {
-			continue
-		}
-
-		for _, p := range *permissionsForOneRole {
-			allPermissionsFromSubjectRolesSet[p] = true
+	case PermissionsAndRole, PermissionsAndAllRoles:
+		if !hasRole {
+			// - If the policy requires a role and the subject does not have it, access is denied.
+			return false, nil
 		}
 	}
 
-	for _, p := range *subjectDirectPermissions {
-		allPermissionsFromSubjectRolesSet[p] = true
-	}
+	// - Check direct permissions
+	hasDirect := checkAllPermissions(subjectPermissions, requiredPermissions)
 
-	// - Convert the set of collected permissions from roles to a slice.
-	effectivePermissions := make([]Permission, 0, len(allPermissionsFromSubjectRolesSet))
-	for p := range allPermissionsFromSubjectRolesSet {
-		effectivePermissions = append(effectivePermissions, p)
-	}
-
-	// - Check if this combined set of permissions from the subject's roles contains all required permissions.
-	if checkAllPermissions(effectivePermissions, requiredPerms) {
+	// - 1. Check for direct permissions first. If they exist, the permission requirement is met.
+	if hasDirect {
 		return true, nil
 	}
 
-	return false, nil
+	// - 2. If no direct permissions, merge permissions from all of the subject's roles.
+	merged, err := mergeRolePermissions(ctx, *subjectRoles, rbacManager)
+	if err != nil {
+		return false, err
+	}
+
+	// - 3. Check if the merged role permissions satisfy the requirement.
+	return checkAllPermissions(merged, requiredPermissions), nil
 }

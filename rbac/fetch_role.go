@@ -14,7 +14,7 @@ func GetRolePermissions(
 	ctx context.Context,
 	roleIdentifier string,
 	rbacManager Manager,
-) (*[]Permission, error) {
+) (Permissions, error) {
 	cacheInstance, cacheErr := rbacManager.GetCache()
 	if cacheErr != nil {
 		return rbacManager.GetRolePermissions(ctx, roleIdentifier)
@@ -24,13 +24,11 @@ func GetRolePermissions(
 
 	cachedString, err := cacheInstance.Get(ctx, cacheKey)
 	if err == nil {
-		var permissions []Permission
+		var permissions Permissions
 		if jsonErr := json.Unmarshal([]byte(cachedString), &permissions); jsonErr != nil {
 			return nil, fmt.Errorf("cache: failed to unmarshal cached permissions for role '%s': %w", roleIdentifier, jsonErr)
 		}
-		if permissions != nil {
-			return &permissions, nil
-		}
+		return permissions, nil
 	}
 
 	sourcePermissions, fetchErr := rbacManager.GetRolePermissions(ctx, roleIdentifier)

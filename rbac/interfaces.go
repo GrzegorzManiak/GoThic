@@ -20,12 +20,30 @@ const (
 	SubjectPermissionsCacheKeyPrefix = "subject_perms:" // Key: subject_perms:<subjectIdentifier>
 )
 
+type RouteRbacPolicy uint16
+
+// Note: I chose to use 'PermissionsOrRole' and 'PermissionsOrAllRoles' instead of 'PermissionsOrRole' and 'PermissionsOrRoles'
+// as it would be very easy to confuse the two and create a security vulnerability.
+const (
+	// PermissionsOrRole requires that the sessions have either ALL permissions or ONE of the roles
+	PermissionsOrRole RouteRbacPolicy = 1 << iota
+
+	// PermissionsOrAllRoles requires that the sessions have ALL permissions AND ALL roles
+	PermissionsOrAllRoles
+
+	// PermissionsAndRole requires that the sessions have ALL permissions AND at least ONE of the roles
+	PermissionsAndRole
+
+	// PermissionsAndAllRoles requires that the sessions have ALL permissions AND ALL roles
+	PermissionsAndAllRoles
+)
+
 type Manager interface {
 	// GetSubjectRolesAndPermissions gets the permissions and roles for a specific subject.
-	GetSubjectRolesAndPermissions(ctx context.Context, subjectIdentifier string) (permissions *[]Permission, roles *[]string, err error)
+	GetSubjectRolesAndPermissions(ctx context.Context, subjectIdentifier string) (permissions Permissions, roles *[]string, err error)
 
 	// GetRolePermissions gets all the permissions associated with a specific role.
-	GetRolePermissions(ctx context.Context, roleIdentifier string) (*[]Permission, error)
+	GetRolePermissions(ctx context.Context, roleIdentifier string) (Permissions, error)
 
 	// GetCache returns a configured gocache CacheInterface instance.
 	// This cache is used internally by the Manager for optimizing RBAC data retrieval (e.g., caching role-permission mappings or subject roles)

@@ -335,7 +335,15 @@ func processRbac(
 		return errors.NewInternalServerError("Failed to get subject identifier", err)
 	}
 
-	rbacOk, err := rbac.CheckPermissions(ctx, rbacManager, subjectIdentifier, rbacCacheId, sessionConfig.Permissions, sessionConfig.Roles)
+	rbacOk, err := rbac.CheckPermissions(
+		ctx,
+		rbacManager,
+		subjectIdentifier,
+		rbacCacheId,
+		sessionConfig.Permissions,
+		sessionConfig.GetFlatRoles(),
+		sessionConfig.RbacPolicy,
+	)
 	if err != nil {
 		zap.L().Debug("Error checking permissions", zap.Error(err))
 		return errors.NewInternalServerError("Failed to check permissions", err)

@@ -14,7 +14,7 @@ func FetchSubjectRoles(
 	ctx context.Context,
 	rbacCacheId string,
 	cacheInstance cache.CacheInterface[string],
-) (permissions *[]Permission, cacheHit bool, err error) {
+) (permissions Permissions, cacheHit bool, err error) {
 	userPermsKey := fmt.Sprintf("%s%s", SubjectPermissionsCacheKeyPrefix, rbacCacheId)
 	cachedPermsString, getErr := cacheInstance.Get(ctx, userPermsKey)
 
@@ -24,8 +24,8 @@ func FetchSubjectRoles(
 	}
 
 	// - Cache hit, unmarshal JSON bytes
-	p := &[]Permission{}
-	if jsonErr := json.Unmarshal([]byte(cachedPermsString), p); jsonErr != nil {
+	p := Permissions{}
+	if jsonErr := json.Unmarshal([]byte(cachedPermsString), &p); jsonErr != nil {
 		return nil, false, fmt.Errorf("cache A: failed to unmarshal cached permissions for '%s': %w", rbacCacheId, jsonErr)
 	}
 
@@ -86,7 +86,7 @@ func CachePermissions(
 	ctx context.Context,
 	rbacCacheId string,
 	cacheInstance cache.CacheInterface[string],
-	permissions *[]Permission,
+	permissions Permissions,
 ) error {
 	if permissions == nil {
 		return nil
@@ -116,7 +116,7 @@ func FetchSubjectRolesAndPermissions(
 	subjectIdentifier string,
 	rbacCacheId string,
 	rbacManager Manager,
-) (permissions *[]Permission, roles *[]string, err error) {
+) (permissions Permissions, roles *[]string, err error) {
 	cacheInstance, cacheErr := rbacManager.GetCache()
 
 	// - Fallback on always fetching from the rbacManager if cache is not available.
@@ -126,7 +126,7 @@ func FetchSubjectRolesAndPermissions(
 	}
 
 	var (
-		loadedPermissions *[]Permission
+		loadedPermissions Permissions
 		loadedRoles       *[]string
 		foundPermsInCache bool
 		foundRolesInCache bool
