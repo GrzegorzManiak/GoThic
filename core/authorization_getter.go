@@ -113,14 +113,16 @@ func extractSession(ctx *gin.Context, sessionManager SessionManager) (*SessionHe
 	source := SourceNone
 	authorizationValue, err := GetAuthorizationHeader(ctx, sessionManager)
 	if err == nil {
+		// - Request is coming from an API key
 		source = SourceHeader
 	} else {
-		headerErr := fmt.Errorf("failed to get authorization header: %w", err)
 		authorizationValue, err = GetSessionCookie(ctx, sessionManager)
 		if err == nil {
+			// - Request is coming from a browser with a session cookie
 			source = SourceCookie
 		} else {
-			return nil, nil, "", SourceNone, fmt.Errorf("failed to get authorization header or cookie: %w, %w", err, headerErr)
+			// - Request is probably coming from a sessionless browser
+			return nil, nil, "", SourceNone, nil
 		}
 	}
 

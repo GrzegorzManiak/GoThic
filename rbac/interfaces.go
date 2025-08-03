@@ -2,9 +2,8 @@ package rbac
 
 import (
 	"context"
-	internalcache "github.com/grzegorzmaniak/gothic/cache"
-
 	"github.com/eko/gocache/lib/v4/cache"
+	internalcache "github.com/grzegorzmaniak/gothic/cache"
 	"github.com/grzegorzmaniak/gothic/helpers"
 	"time"
 )
@@ -40,10 +39,10 @@ const (
 
 type Manager interface {
 	// GetSubjectRolesAndPermissions gets the permissions and roles for a specific subject.
-	GetSubjectRolesAndPermissions(ctx context.Context, subjectIdentifier string) (permissions Permissions, roles *[]string, err error)
+	GetSubjectRolesAndPermissions(ctx context.Context, subjectIdentifier string) (permissions *Permissions, roles *[]string, err error)
 
 	// GetRolePermissions gets all the permissions associated with a specific role.
-	GetRolePermissions(ctx context.Context, roleIdentifier string) (Permissions, error)
+	GetRolePermissions(ctx context.Context, roleIdentifier string) (*Permissions, error)
 
 	// GetCache returns a configured gocache CacheInterface instance.
 	// This cache is used internally by the Manager for optimizing RBAC data retrieval (e.g., caching role-permission mappings or subject roles)

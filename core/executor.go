@@ -31,7 +31,8 @@ func _establishSessionContext(
 	case SourceHeader:
 		return establishBearerSession(ctx, sessionManager, sessionConfig, claims, header, group)
 
-	case SourceCookie:
+	case SourceCookie,
+		SourceNone:
 		return establishCookieSession(ctx, sessionManager, sessionConfig, claims, header, group)
 
 	default:
@@ -340,7 +341,7 @@ func processRbac(
 		rbacManager,
 		subjectIdentifier,
 		rbacCacheId,
-		sessionConfig.Permissions,
+		sessionConfig.GetFlatPermissions(),
 		sessionConfig.GetFlatRoles(),
 		sessionConfig.RbacPolicy,
 	)

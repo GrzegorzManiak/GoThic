@@ -6,34 +6,11 @@ import (
 	"go.uber.org/zap"
 )
 
-// checkAllPermissions checks if all permissions in requiredPermissions are present in availablePermissions.
-func checkAllPermissions(availablePermissions Permissions, requiredPermissions Permissions) bool {
-	for resource, requiredBits := range requiredPermissions {
-		availableBits, ok := availablePermissions[resource]
-		if !ok {
-			// - We could do an 'all' check here, but this would be hidden functionality and
-			// not everyone would expect it.
-			return false
-		}
-
-		//  0 Check if all required bits are present
-		if availableBits&requiredBits != requiredBits {
-			return false
-		}
-	}
-	return true
-}
-
 // roleCheck checks if the subject is a member of at least one of the roles in routeRolesList.
 func roleCheck(subjectRoles []string, routeRolesList map[string]bool, routeRbacPolicy RouteRbacPolicy) bool {
 	// - If no roles are required, access is granted.
 	if len(routeRolesList) == 0 {
-		return false
-	}
-
-	// - If the subject has no roles, they cannot match any role in the required list.
-	if len(subjectRoles) == 0 {
-		return false
+		return true
 	}
 
 	switch routeRbacPolicy {
@@ -74,18 +51,19 @@ func roleCheck(subjectRoles []string, routeRolesList map[string]bool, routeRbacP
 }
 
 // mergeRolePermissions fetches permissions for each role in subjectRoles and merges them into a single Permissions map.
-func mergeRolePermissions(ctx context.Context, subjectRoles []string, rbacManager Manager) (Permissions, error) {
-	mergedPermissions := make(Permissions)
+func mergeRolePermissions(ctx context.Context, subjectRoles []string, rbacManager Manager) (*Permission, error) {
+	mergedPermissions := Permissions{}
 	for _, role := range subjectRoles {
 		rolePerms, err := GetRolePermissions(ctx, role, rbacManager)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get permissions for role '%s': %w", role, err)
 		}
-		for resource, bits := range rolePerms {
-			mergedPermissions[resource] |= bits
+
+		if rolePerms != nil {
+			mergedPermissions = append(mergedPermissions, *rolePerms...)
 		}
 	}
-	return mergedPermissions, nil
+	return mergedPermissions.Flatten(), nil
 }
 
 // CheckPermissions verifies if a subject meets the required permissions and/or roles
@@ -95,13 +73,13 @@ func CheckPermissions(
 	rbacManager Manager,
 	subjectIdentifier string,
 	rbacCacheId string,
-	requiredPermissions Permissions,
+	requiredPermissions *Permission,
 	requiredRoles map[string]bool,
 	policy RouteRbacPolicy,
 ) (bool, error) {
 
-	// - If no permissions or roles are required, access is granted
-	if len(requiredPermissions) == 0 && len(requiredRoles) == 0 {
+	// - If no permissions or roles are required, access is granted.
+	if len(requiredRoles) == 0 && requiredPermissions == nil {
 		return true, nil
 	}
 
@@ -112,7 +90,7 @@ func CheckPermissions(
 	}
 
 	if subjectPermissions == nil {
-		subjectPermissions = Permissions{}
+		subjectPermissions = &Permission{}
 	}
 
 	if subjectRoles == nil {
@@ -137,7 +115,7 @@ func CheckPermissions(
 	}
 
 	// - Check direct permissions
-	hasDirect := checkAllPermissions(subjectPermissions, requiredPermissions)
+	hasDirect := subjectPermissions.Has(requiredPermissions)
 
 	// - 1. Check for direct permissions first. If they exist, the permission requirement is met.
 	if hasDirect {
@@ -151,5 +129,5 @@ func CheckPermissions(
 	}
 
 	// - 3. Check if the merged role permissions satisfy the requirement.
-	return checkAllPermissions(merged, requiredPermissions), nil
+	return merged.Has(requiredPermissions), nil
 }

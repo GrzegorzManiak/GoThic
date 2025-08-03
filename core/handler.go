@@ -60,6 +60,10 @@ type APIConfiguration struct {
 
 	// flatRoles is a cached map of roles for this configuration, It provides a quick lookup for roles
 	flatRoles map[string]bool
+
+	// flatPermissions is a cached map of permissions for this configuration, It provides a quick lookup for permissions
+	flatPermissions            rbac.Permission
+	flatPermissionsInitialized bool
 }
 
 func (config *APIConfiguration) GetFlatRoles() map[string]bool {
@@ -72,4 +76,12 @@ func (config *APIConfiguration) GetFlatRoles() map[string]bool {
 		}
 	}
 	return config.flatRoles
+}
+
+func (config *APIConfiguration) GetFlatPermissions() *rbac.Permission {
+	if !config.flatPermissionsInitialized {
+		config.flatPermissionsInitialized = true
+		config.flatPermissions = *config.Permissions.Flatten()
+	}
+	return &config.flatPermissions
 }

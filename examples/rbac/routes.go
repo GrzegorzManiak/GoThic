@@ -123,11 +123,11 @@ var AuthenticatedResourceHandlerConfig = &core.APIConfiguration{
 	SessionRequired: true,
 	Allow:           []string{"guest_session", "user_session"},
 	Permissions: rbac.Permissions{
-		"session_data": rbac.Read | rbac.Create,
-		"resource1":    rbac.Read,
+		ReadWriteSessionData,
+		ReadOnlySessionData,
 	},
-	RbacPolicy: rbac.PermissionsOrRole,
-	Roles:      &[]string{},
+	RbacPolicy: rbac.PermissionsAndRole,
+	Roles:      &[]string{"test", "test2"},
 }
 
 // AuthenticatedResourceOutput defines the output for a handler that exposes authenticated user/session data.
