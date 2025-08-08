@@ -9,6 +9,38 @@ import (
 	"go.uber.org/zap"
 )
 
+// _verifyClaimsAndHandleSessionState centralizes the logic for claims verification
+// and handles the session state based on whether the session is required or optional.
+func _verifyClaimsAndHandleSessionState(
+	ctx *gin.Context,
+	sessionManager SessionManager,
+	sessionConfig *APIConfiguration,
+	claims *SessionClaims,
+	header *SessionHeader,
+	group string,
+) (*SessionHeader, *SessionClaims, string, *errors.AppError) {
+	isClaimsVerified, verifyErr := sessionManager.VerifyClaims(ctx, claims, sessionConfig)
+
+	if sessionConfig.SessionRequired {
+		if verifyErr != nil || !isClaimsVerified {
+			zap.L().Debug("Session required but claims verification failed", zap.Error(verifyErr), zap.Bool("isClaimsVerified", isClaimsVerified))
+			return nil, nil, "", errors.NewUnauthorized("", verifyErr)
+		}
+		if claims == nil || !claims.HasSession {
+			zap.L().Error("Session required, but claims are nil or marked as no session after all checks", zap.Any("claims", claims))
+			return nil, nil, "", errors.NewInternalServerError("", nil)
+		}
+	} else if claims != nil && (verifyErr != nil || !isClaimsVerified) {
+		// - If a session is not required, but an *invalid* one was presented, nullify it.
+		zap.L().Debug("Optional session presented but claims verification failed, nullifying session.", zap.Error(verifyErr))
+		header = nil
+		claims = nil
+		group = ""
+	}
+
+	return header, claims, group, nil
+}
+
 // _establishSessionContext handles session extraction, validation, refresh, and claims verification.
 // It returns the session header, claims, session group, or an AppError if processing fails.
 // Note: The error messages are intentionally left blank as then they are filled in by the default for
@@ -49,74 +81,43 @@ func establishBearerSession(
 	header *SessionHeader,
 	group string,
 ) (*SessionHeader, *SessionClaims, *CompleteCsrfToken, string, *errors.AppError) {
-	// - Validate the bearer SessionHeader if present (even if a session is not required, if a header exists, it should be valid)
+	// 1. Handle initial header validation (unique to both bearer and cookie)
 	if header != nil && (header.IsExpired() || !header.IsValid()) {
 		zap.L().Debug("Bearer session header is invalid or expired", zap.Any("header", header))
 		if sessionConfig.SessionRequired {
 			return nil, nil, nil, "", errors.NewUnauthorized("", nil)
 		}
-
-		header = nil
-		claims = nil
-		group = ""
+		header, claims, group = nil, nil, ""
 	}
 
-	// - Check if the bearer needs to be revalidated
-	// Bearer tokens are static and cannot be refreshed; they can only be revalidated.
-	// The refresh indicator is stored in the header, which itself cannot be updated.
-	// To track refresh timing, a cache is used to store the last refresh time.
+	// 2. Handle bearer-specific revalidation logic (unique to bearer)
 	cacheKey, needsRefresh, err := BearerNeedsValidation(ctx, sessionManager, claims)
 	if err != nil {
 		zap.L().Debug("Error checking if bearer needs validation", zap.Error(err))
 		if sessionConfig.SessionRequired {
 			return nil, nil, nil, "", errors.NewInternalServerError("", err)
 		}
-
-		header = nil
-		claims = nil
-		group = ""
+		header, claims, group = nil, nil, ""
 	}
 
+	// Revalidate the bearer token if needed and update the cache.
 	if header != nil && claims != nil && needsRefresh {
-		// - Verify the session
 		if ok, reAuthErr := sessionManager.VerifySession(ctx, claims, header); reAuthErr != nil || !ok {
 			return nil, nil, nil, "", errors.NewUnauthorized("", reAuthErr)
 		}
-
-		// - Cache the refresh time
 		if cacheErr := BearerSetCache(ctx, sessionManager, cacheKey, header); cacheErr != nil {
 			zap.L().Debug("Error setting bearer cache", zap.Error(cacheErr))
 			return nil, nil, nil, "", errors.NewInternalServerError("", cacheErr)
 		}
 	}
 
-	isClaimsVerified, verifyErr := sessionManager.VerifyClaims(ctx, claims, sessionConfig)
-	if sessionConfig.SessionRequired {
-
-		// - Claims verification failed, but a session is required
-		if verifyErr != nil || !isClaimsVerified {
-			zap.L().Debug("Bearer required but claims verification failed", zap.Error(verifyErr), zap.Bool("isClaimsVerified", isClaimsVerified))
-			return nil, nil, nil, "", errors.NewUnauthorized("", verifyErr)
-		}
-
-		// - Insurance: if a session is required, claims must exist and be marked as having a session
-		if claims == nil || !claims.HasSession {
-			zap.L().Error("Bearer required, but claims are nil or marked as no session after all checks", zap.Any("claims", claims))
-			return nil, nil, nil, "", errors.NewInternalServerError("", nil)
-		}
+	// 3. Verify claims and handle session state
+	header, claims, group, appErr := _verifyClaimsAndHandleSessionState(ctx, sessionManager, sessionConfig, claims, header, group)
+	if appErr != nil {
+		return nil, nil, nil, "", appErr
 	}
 
-	// - If a session is not required, but claims exist and verification failed,
-	// it might be treated as an invalid optional session (effectively no session).
-	// For simplicity, if VerifyClaims fails for an *existing* optional session, we clear it.
-	if !sessionConfig.SessionRequired && claims != nil && (verifyErr != nil || !isClaimsVerified) {
-		zap.L().Debug("Optional bearer presented but claims verification failed", zap.Error(verifyErr), zap.Bool("isClaimsVerified", isClaimsVerified))
-		header = nil
-		claims = nil
-		group = ""
-	}
-
-	// - Bearers are not tied to CSRF tokens, so we don't need to validate CSRF here
+	// 4. Return the final state. Bearers have no CSRF token.
 	return header, claims, nil, group, nil
 }
 
@@ -128,42 +129,30 @@ func establishCookieSession(
 	header *SessionHeader,
 	group string,
 ) (*SessionHeader, *SessionClaims, *CompleteCsrfToken, string, *errors.AppError) {
-
-	var csrfToken *CompleteCsrfToken
-	var csrfErr error
-
-	csrfToken, csrfErr = extractCsrf(ctx, sessionManager)
+	// 1. Handle CSRF extraction (unique to cookie)
+	csrfToken, csrfErr := extractCsrf(ctx, sessionManager)
 	if csrfErr != nil {
 		csrfToken = nil
-
-		// Note: At this stage we don't really want to trust the claims object, could be stale etc, so
-		// we will just issue a new anonymous CSRF token
 		if err := AutoSetCsrfCookie(ctx, sessionManager, nil); err != nil {
-			zap.L().Debug("Error attempting to set CSRF cookie", zap.Error(err))
+			zap.L().Debug("Error attempting to set anonymous CSRF cookie", zap.Error(err))
 			return nil, nil, nil, "", errors.NewInternalServerError("Failed to set CSRF cookie", err)
 		}
-
-		// Since the dev decided that we don't need CSRF on this route, we will just set csrf to nil
-		// which will bypass all further CSRF checks below
 		if sessionConfig.RequireCsrf {
-			zap.L().Debug("CSRF token is invalid or expired", zap.Error(csrfErr))
+			zap.L().Debug("Required CSRF token is invalid", zap.Error(csrfErr))
 			return nil, nil, nil, "", errors.NewUnauthorized("CSRF token is invalid or expired", csrfErr)
 		}
 	}
 
-	// - Validate the SessionHeader if present (even if a session is not required, if a header exists, it should be valid)
+	// 2. Handle initial header validation (unique to both bearer and cookie)
 	if header != nil && (header.IsExpired() || !header.IsValid()) {
 		zap.L().Debug("Session header is invalid or expired", zap.Any("header", header))
 		if sessionConfig.SessionRequired {
 			return nil, nil, nil, "", errors.NewUnauthorized("", nil)
 		}
-
-		header = nil
-		claims = nil
-		group = ""
+		header, claims, group = nil, nil, ""
 	}
 
-	// - Refresh the SessionHeader if present, valid, and needs refresh
+	// 3. Handle cookie-specific session refresh (unique to cookie)
 	if header != nil && claims != nil && header.NeedsRefresh() {
 		if err := SetRefreshSessionCookie(ctx, sessionManager, claims, header); err != nil {
 			zap.L().Debug("Error attempting to refresh session cookie", zap.Error(err))
@@ -171,41 +160,21 @@ func establishCookieSession(
 		}
 	}
 
-	isClaimsVerified, verifyErr := sessionManager.VerifyClaims(ctx, claims, sessionConfig)
-	if sessionConfig.SessionRequired {
-
-		// - Claims verification failed, but a session is required
-		if verifyErr != nil || !isClaimsVerified {
-			zap.L().Debug("Session required but claims verification failed", zap.Error(verifyErr), zap.Bool("isClaimsVerified", isClaimsVerified))
-			return nil, nil, nil, "", errors.NewUnauthorized("", verifyErr)
-		}
-
-		// - Insurance: if a session is required, claims must exist and be marked as having a session
-		if claims == nil || !claims.HasSession {
-			zap.L().Error("Session required, but claims are nil or marked as no session after all checks", zap.Any("claims", claims))
-			return nil, nil, nil, "", errors.NewInternalServerError("", nil)
-		}
+	// 4. Verify claims and handle session state
+	header, claims, group, appErr := _verifyClaimsAndHandleSessionState(ctx, sessionManager, sessionConfig, claims, header, group)
+	if appErr != nil {
+		return nil, nil, nil, "", appErr
 	}
 
-	// - If a session is not required, but claims exist and verification failed,
-	// it might be treated as an invalid optional session (effectively no session).
-	// For simplicity, if VerifyClaims fails for an *existing* optional session, we clear it.
-	if !sessionConfig.SessionRequired && claims != nil && (verifyErr != nil || !isClaimsVerified) {
-		zap.L().Debug("Optional session presented but claims verification failed", zap.Error(verifyErr), zap.Bool("isClaimsVerified", isClaimsVerified))
-		header = nil
-		claims = nil
-		group = ""
-	}
-
-	// - CSRF validation
+	// 5. Perform final CSRF validation (unique to cookie)
 	if err := validateCsrf(ctx, sessionManager, claims, csrfToken); err != nil {
 		zap.L().Debug("CSRF validation failed", zap.Error(err))
 		if sessionConfig.RequireCsrf {
 			return nil, nil, nil, "", errors.NewUnauthorized("CSRF token is invalid or expired", err)
 		}
-		csrfToken = &CompleteCsrfToken{}
 	}
 
+	// 6. Return the final state
 	return header, claims, csrfToken, group, nil
 }
 
