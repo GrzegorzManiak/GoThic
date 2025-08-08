@@ -17,7 +17,7 @@ type AppSessionManager struct {
 	// Configuration for this session manager instance.
 	SessionAuthorizationData *core.SessionAuthorizationData   // Holds the cookie settings.
 	CsrfCookieData           *core.CsrfCookieData             // Holds the CSRF settings.
-	SessionKeyValue          *[]byte                          // Holds the secret key for session operations.
+	SessionKeyValue          []byte                           // Holds the secret key for session operations.
 	RbacManager              *MyRbacManager                   // Holds the RBAC manager for this session manager.
 	Cache                    *gothicCache.DefaultCacheManager // Holds the cache for this session manager.
 }
@@ -51,13 +51,13 @@ func (m *AppSessionManager) GetAuthorizationData() *core.SessionAuthorizationDat
 // GetSessionKey returns the session key used for cryptographic operations.
 // This method is part of the core.SessionManager interface.
 // This is the newest key in rotation.
-func (m *AppSessionManager) GetSessionKey() (*[]byte, string, error) {
+func (m *AppSessionManager) GetSessionKey() ([]byte, string, error) {
 	return m.SessionKeyValue, "some-key-id", nil
 }
 
 // GetOldSessionKey returns an old session key for the given key ID.
 // This method is part of the core.SessionManager interface.
-func (m *AppSessionManager) GetOldSessionKey(keyID string) (*[]byte, error) {
+func (m *AppSessionManager) GetOldSessionKey(keyID string) ([]byte, error) {
 	// In a real implementation, this would fetch the key from a secure store.
 	// For this demo, we return the same key as the current one.
 	return m.SessionKeyValue, nil

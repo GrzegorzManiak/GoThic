@@ -26,7 +26,7 @@ func main() {
 	}
 
 	mySessionManager := &AppSessionManager{
-		SessionKeyValue:          &sessionKey,
+		SessionKeyValue:          sessionKey,
 		SessionAuthorizationData: &core.SessionAuthorizationData{CookieSecure: false},
 		CsrfCookieData:           &core.CsrfCookieData{Secure: false},
 		RbacManager:              &MyRbacManager{},

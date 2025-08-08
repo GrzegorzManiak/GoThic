@@ -28,10 +28,10 @@ type SessionManager interface {
 	GetCsrfData() *CsrfCookieData
 
 	// GetSessionKey Is used to get the freshest session key for the session manager
-	GetSessionKey() (keyBytes *[]byte, keyIdentifier string, error error)
+	GetSessionKey() (keyBytes []byte, keyIdentifier string, error error)
 
 	// GetOldSessionKey Is used to get an old session key for the session manager
-	GetOldSessionKey(string) (keyBytes *[]byte, error error)
+	GetOldSessionKey(string) (keyBytes []byte, error error)
 
 	// VerifySession Is used to verify a session token, and should the token be allowed to be extended
 	VerifySession(ctx context.Context, claimsToVerify *SessionClaims, sessionHeader *SessionHeader) (bool, error)

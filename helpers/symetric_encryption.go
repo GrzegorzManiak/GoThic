@@ -31,13 +31,8 @@ func GenerateSymmetricKey(size int) ([]byte, error) {
 }
 
 // SymmetricEncrypt encrypts plaintext using AES-GCM with the given key.
-func SymmetricEncrypt(key *[]byte, plaintext []byte, associatedData []byte) ([]byte, error) {
-	dereferencedKey := *key
-	if dereferencedKey == nil {
-		return nil, fmt.Errorf("key cannot be nil")
-	}
-
-	block, err := aes.NewCipher(dereferencedKey)
+func SymmetricEncrypt(key []byte, plaintext []byte, associatedData []byte) ([]byte, error) {
+	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create AES cipher block: %w", err)
 	}
@@ -57,13 +52,8 @@ func SymmetricEncrypt(key *[]byte, plaintext []byte, associatedData []byte) ([]b
 }
 
 // SymmetricDecrypt decrypts ciphertext (which must include a prepended nonce) using AES-GCM.
-func SymmetricDecrypt(key *[]byte, ciphertextWithNonce []byte, associatedData []byte) ([]byte, error) {
-	dereferencedKey := *key
-	if dereferencedKey == nil {
-		return nil, fmt.Errorf("key cannot be nil")
-	}
-
-	block, err := aes.NewCipher(dereferencedKey)
+func SymmetricDecrypt(key []byte, ciphertextWithNonce []byte, associatedData []byte) ([]byte, error) {
+	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create AES cipher block: %w", err)
 	}

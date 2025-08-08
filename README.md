@@ -73,7 +73,7 @@ type AppSessionManager struct {
 	core.DefaultSessionManager[*AppSpecificUser] // Embed default manager for your user type
 	CookieDataConfig *core.SessionCookieData
 	CsrfDataConfig   *core.CsrfCookieData
-	SessionKeyValue  *[]byte
+	SessionKeyValue  []byte
 	// RbacManager      rbac.Manager // Uncomment and implement if using RBAC
 }
 
@@ -88,12 +88,12 @@ func (m *AppSessionManager) GetCsrfData() *core.CsrfCookieData {
 }
 
 // GetSessionKey returns the current encryption key for sessions.
-func (m *AppSessionManager) GetSessionKey() (*[]byte, string, error) {
+func (m *AppSessionManager) GetSessionKey() ([]byte, string, error) {
 	return m.SessionKeyValue, "your-key-id-1", nil // Provide a key ID
 }
 
 // GetOldSessionKey returns an old encryption key (for key rotation).
-func (m *AppSessionManager) GetOldSessionKey(keyID string) (*[]byte, error) {
+func (m *AppSessionManager) GetOldSessionKey(keyID string) ([]byte, error) {
 	// For simplicity, returning the same key. Implement proper key rotation in production.
 	if keyID == "your-key-id-1" {
 		return m.SessionKeyValue, nil
