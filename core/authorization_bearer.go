@@ -1,16 +1,16 @@
 package core
 
 import (
+	"encoding/binary"
 	"fmt"
 	"github.com/eko/gocache/lib/v4/store"
 	"github.com/gin-gonic/gin"
 	"github.com/grzegorzmaniak/gothic/errors"
 	"github.com/grzegorzmaniak/gothic/helpers"
-	"strconv"
 	"time"
 )
 
-func GetAuthorizationHeader(
+func GetAuthorizationBearer(
 	ctx *gin.Context,
 	sessionManager SessionManager,
 ) (string, error) {
@@ -45,7 +45,6 @@ func IssueBearerToken(
 	if sessionManager == nil {
 		return "", fmt.Errorf("session manager is nil")
 	}
-
 	authorizationData := sessionManager.GetAuthorizationData()
 	return IssueCustomBearerToken(ctx, sessionManager, group, claims, authorizationData)
 }
@@ -68,6 +67,7 @@ func IssueCustomBearerToken(
 	if claims == nil {
 		return "", fmt.Errorf("claims are nil")
 	}
+
 	if authorizationData == nil {
 		return "", errors.NewInternalServerError("Authorization data is nil", nil)
 	}
@@ -125,26 +125,19 @@ func BearerNeedsValidation(
 	}
 
 	// - Check if the session is in the cache
-	cachedSession, getErr := cache.Get(ctx, cacheKey)
+	cachedValue, getErr := cache.Get(ctx, cacheKey)
 	if getErr != nil {
-		// - When we get a cache miss, it's returned as an error, therefore, we can't just
-		// invalidate the whole request over it. We will just force a refresh.
+		// - Cache miss is not a fatal error; it just means we need to validate.
 		return cacheKey, true, nil
 	}
 
-	if cachedSession == nil {
-		return "", false, nil
+	if len(cachedValue) < 8 {
+		// - The cached value is invalid or corrupted. Force a refresh.
+		return cacheKey, true, fmt.Errorf("invalid cache entry for key '%s': expected 8 bytes, got %d", cacheKey, len(cachedValue))
 	}
 
-	// - Stored as a Unix timestamp; after this time, the session requires validation
-	timeStamp, convErr := strconv.ParseInt(string(cachedSession), 10, 64)
-	if convErr != nil {
-		return "", false, fmt.Errorf("failed to convert cached session to int: %w", convErr)
-	}
-
-	// - Check if the token needs validation
-	needsRefresh = timeStamp < time.Now().Unix()
-	return cacheKey, needsRefresh, nil
+	// - Read the 8-byte slice directly into an uint64
+	return cacheKey, binary.BigEndian.Uint64(cachedValue) < uint64(time.Now().Unix()), nil
 }
 
 // BearerSetCache sets the cache for the session token.
@@ -175,10 +168,17 @@ func BearerSetCache(
 		return fmt.Errorf("failed to get cache: %w", err)
 	}
 
-	// - Set the new refresh time in the cache
-	cacheTTL := time.Duration(header.RefreshPeriodSec) * time.Second
-	refreshTime := time.Now().Add(cacheTTL).Unix()
-	if err = cache.Set(ctx, cacheKey, []byte(strconv.FormatInt(refreshTime, 10)), store.WithExpiration(cacheTTL)); err != nil {
+	// - Calculate the refresh timestamp.
+	refreshPeriod := time.Duration(header.RefreshPeriodSec) * time.Second
+	refreshTime := time.Now().Add(refreshPeriod).Unix()
+
+	// - Create an 8-byte slice to hold the binary representation of the timestamp.
+	b := make([]byte, 8)
+	binary.BigEndian.PutUint64(b, uint64(refreshTime))
+
+	// - The cache TTL should be slightly longer than the refresh period to avoid premature eviction.
+	cacheTTL := refreshPeriod + (5 * time.Minute)
+	if err = cache.Set(ctx, cacheKey, b, store.WithExpiration(cacheTTL)); err != nil {
 		return fmt.Errorf("failed to set cache: %w", err)
 	}
 

@@ -7,6 +7,23 @@ import (
 	"github.com/grzegorzmaniak/gothic/helpers"
 )
 
+func applyCookie(
+	ctx *gin.Context,
+	authData *SessionAuthorizationData,
+	value string,
+	maxAge int,
+) {
+	ctx.SetCookie(
+		helpers.DefaultString(authData.CookieName, DefaultSessionAuthorizationName),
+		value,
+		maxAge,
+		helpers.DefaultString(authData.CookiePath, DefaultSessionAuthorizationPath),
+		helpers.DefaultString(authData.CookieDomain, DefaultSessionAuthorizationDomain),
+		helpers.DefaultBool(authData.CookieSecure, DefaultSessionAuthorizationSecure),
+		helpers.DefaultBool(authData.CookieHttpOnly, DefaultSessionAuthorizationHttpOnly),
+	)
+}
+
 func GetSessionCookie(
 	ctx *gin.Context,
 	sessionManager SessionManager,
@@ -83,15 +100,8 @@ func SetCustomSessionCookie(
 		return errors.NewInternalServerError("Failed to store session", err)
 	}
 
-	ctx.SetCookie(
-		helpers.DefaultString(authorizationData.CookieName, DefaultSessionAuthorizationName),
-		authorizationString,
-		int(helpers.DefaultTimeDuration(authorizationData.Expiration, DefaultSessionExpiration).Seconds()),
-		helpers.DefaultString(authorizationData.CookiePath, DefaultSessionAuthorizationPath),
-		helpers.DefaultString(authorizationData.CookieDomain, DefaultSessionAuthorizationDomain),
-		helpers.DefaultBool(authorizationData.CookieSecure, DefaultSessionAuthorizationSecure),
-		helpers.DefaultBool(authorizationData.CookieHttpOnly, DefaultSessionAuthorizationHttpOnly),
-	)
+	expirationSeconds := int(helpers.DefaultTimeDuration(authorizationData.Expiration, DefaultSessionExpiration).Seconds())
+	applyCookie(ctx, authorizationData, authorizationString, expirationSeconds)
 
 	csrfTie, _ := claims.GetClaim(CsrfTokenTie)
 	err = SetCsrfCookie(ctx, sessionManager, csrfTie)
@@ -152,15 +162,8 @@ func SetCustomRefreshSessionCookie(
 		return err
 	}
 
-	ctx.SetCookie(
-		helpers.DefaultString(authorizationData.CookieName, DefaultSessionAuthorizationName),
-		authorizationString,
-		int(helpers.DefaultTimeDuration(authorizationData.Expiration, DefaultSessionExpiration).Seconds()),
-		helpers.DefaultString(authorizationData.CookiePath, DefaultSessionAuthorizationPath),
-		helpers.DefaultString(authorizationData.CookieDomain, DefaultSessionAuthorizationDomain),
-		helpers.DefaultBool(authorizationData.CookieSecure, DefaultSessionAuthorizationSecure),
-		helpers.DefaultBool(authorizationData.CookieHttpOnly, DefaultSessionAuthorizationHttpOnly),
-	)
+	expirationSeconds := int(helpers.DefaultTimeDuration(authorizationData.Expiration, DefaultSessionExpiration).Seconds())
+	applyCookie(ctx, authorizationData, authorizationString, expirationSeconds)
 
 	return nil
 }
@@ -182,15 +185,7 @@ func ClearSessionCookie(
 		return errors.NewInternalServerError("Authorization data is nil", nil)
 	}
 
-	ctx.SetCookie(
-		helpers.DefaultString(authorizationData.CookieName, DefaultSessionAuthorizationName),
-		"",
-		-1,
-		helpers.DefaultString(authorizationData.CookiePath, DefaultSessionAuthorizationPath),
-		helpers.DefaultString(authorizationData.CookieDomain, DefaultSessionAuthorizationDomain),
-		helpers.DefaultBool(authorizationData.CookieSecure, DefaultSessionAuthorizationSecure),
-		helpers.DefaultBool(authorizationData.CookieHttpOnly, DefaultSessionAuthorizationHttpOnly),
-	)
+	applyCookie(ctx, authorizationData, "", -1)
 
 	if err := ClearCsrfCookie(ctx, sessionManager); err != nil {
 		return errors.NewInternalServerError("Failed to clear session", err)

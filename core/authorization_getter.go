@@ -95,7 +95,7 @@ func extractSession(ctx *gin.Context, sessionManager SessionManager) (*SessionHe
 
 	// --- Flattened logic for source extraction ---
 	source := SourceHeader
-	authorizationValue, err := GetAuthorizationHeader(ctx, sessionManager)
+	authorizationValue, err := GetAuthorizationBearer(ctx, sessionManager)
 	if err != nil {
 		// - Check if there is a session cookie
 		authorizationValue, err = GetSessionCookie(ctx, sessionManager)
