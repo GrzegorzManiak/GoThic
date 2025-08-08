@@ -133,10 +133,6 @@ func establishCookieSession(
 	csrfToken, csrfErr := extractCsrf(ctx, sessionManager)
 	if csrfErr != nil {
 		csrfToken = nil
-		if err := AutoSetCsrfCookie(ctx, sessionManager, nil); err != nil {
-			zap.L().Debug("Error attempting to set anonymous CSRF cookie", zap.Error(err))
-			return nil, nil, nil, "", errors.NewInternalServerError("Failed to set CSRF cookie", err)
-		}
 		if sessionConfig.RequireCsrf {
 			zap.L().Debug("Required CSRF token is invalid", zap.Error(csrfErr))
 			return nil, nil, nil, "", errors.NewUnauthorized("CSRF token is invalid or expired", csrfErr)
@@ -166,8 +162,17 @@ func establishCookieSession(
 		return nil, nil, nil, "", appErr
 	}
 
-	// 5. Perform final CSRF validation (unique to cookie)
-	if err := validateCsrf(ctx, sessionManager, claims, csrfToken); err != nil {
+	// 5. Perform final CSRF validation.
+	if csrfToken == nil {
+		// If the token is nil, and it got to here, it means that the CSRF token is not required, so we can skip validation,
+		// instead we will just issue them a new CSRF token that is automatically tied to their session.
+		csrfToken = &CompleteCsrfToken{}
+		if err := AutoSetCsrfCookie(ctx, sessionManager, claims); err != nil {
+			zap.L().Debug("Error attempting to set anonymous CSRF cookie", zap.Error(err))
+			return nil, nil, nil, "", errors.NewInternalServerError("Failed to set CSRF cookie", err)
+		}
+	} else if err := validateCsrf(ctx, sessionManager, claims, csrfToken); err != nil {
+		// This means that the user provided a CSRF token, but it is invalid or expired.
 		zap.L().Debug("CSRF validation failed", zap.Error(err))
 		if sessionConfig.RequireCsrf {
 			return nil, nil, nil, "", errors.NewUnauthorized("CSRF token is invalid or expired", err)

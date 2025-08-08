@@ -23,6 +23,11 @@ func applyCsrfCookie(
 	value string,
 	maxAge int,
 ) {
+	// - Ensure that there is no other cookie with the same name
+	if ctx == nil {
+		return
+	}
+
 	ctx.SetCookie(
 		helpers.DefaultString(csrfData.Name, DefaultCsrfCookieName),
 		value,
