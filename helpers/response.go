@@ -1,7 +1,6 @@
 package helpers
 
 import (
-	"encoding/json"
 	"github.com/gin-gonic/gin"
 	"github.com/grzegorzmaniak/gothic/errors"
 	"go.uber.org/zap"
@@ -12,14 +11,12 @@ import (
 func ErrorResponse(ctx *gin.Context, appErr *errors.AppError) {
 	production := gin.Mode() == gin.ReleaseMode
 
-	// - Should not happen.
 	if appErr == nil {
 		zap.L().Warn("ErrorResponse called with nil error")
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "An unexpected error occurred."})
 		return
 	}
 
-	// - Log the AppError, including its underlying error if present
 	logFields := []zap.Field{
 		zap.Int("statusCode", appErr.Code),
 		zap.String("clientMessage", appErr.Message),
@@ -29,21 +26,16 @@ func ErrorResponse(ctx *gin.Context, appErr *errors.AppError) {
 		logFields = append(logFields, zap.Error(appErr.Err))
 	}
 
-	// - Attempt to marshal details for logging if it's complex
 	if appErr.Details != nil {
-		detailBytes, _ := json.Marshal(appErr.Details)
-		logFields = append(logFields, zap.String("details", string(detailBytes)))
+		logFields = append(logFields, zap.Any("details", appErr.Details))
 	}
 
-	zap.L().Debug("Application error occurred", logFields...)
-
-	// - Send the JSON response using the AppError's ToJSONResponse method
-	ctx.JSON(appErr.Code, appErr.ToJSONResponse(production))
-	ctx.Abort() // - Ensure no other handlers are called
+	zap.L().Error("Application error occurred", logFields...)
+	ctx.AbortWithStatusJSON(appErr.Code, appErr.ToJSONResponse(production))
 }
 
 // SuccessResponse sends a JSON success response.
-func SuccessResponse(ctx *gin.Context, data interface{}, headers map[string]string) {
+func SuccessResponse(ctx *gin.Context, statusCode int, data interface{}, headers map[string]string) {
 	if headers != nil {
 		for key, value := range headers {
 			ctx.Header(key, value)
@@ -51,9 +43,9 @@ func SuccessResponse(ctx *gin.Context, data interface{}, headers map[string]stri
 	}
 
 	if data == nil {
-		ctx.Status(http.StatusNoContent)
+		ctx.Status(statusCode)
 		return
 	}
 
-	ctx.JSON(http.StatusOK, data)
+	ctx.JSON(statusCode, data)
 }
