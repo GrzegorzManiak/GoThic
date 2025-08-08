@@ -3,9 +3,11 @@ package core
 import (
 	"encoding/base64"
 	"fmt"
+	"strings" // Import the strings package for the builder
+	"time"
+
 	"github.com/grzegorzmaniak/gothic/errors"
 	"github.com/grzegorzmaniak/gothic/helpers"
-	"time"
 )
 
 const (
@@ -24,81 +26,54 @@ const (
 	DefaultAuthorizationExpiration = time.Hour * 24 * 30
 	DefaultAuthorizationVerifyTime = time.Minute * 10
 
-	MinimumSessionAuthorizationSize = 128            // Minimum size for a Authorization to be valid
-	MaximumSessionAuthorizationSize = (1024 * 4) - 1 // The default maximum size for a Authorization is 4096 bytes
+	MinimumSessionAuthorizationSize = 128
+	MaximumSessionAuthorizationSize = (1024 * 4) - 1
 
-	MinimumSessionKeyIdSize = 1  // Minimum size for a key ID to be valid
-	MaximumSessionKeyIdSize = 32 // 32 bytes for AES-256
+	MinimumSessionKeyIdSize = 1
+	MaximumSessionKeyIdSize = 32
 
-	SessionAuthorizationVersion     = "SG1" // Version of the Authorization format
-	MaximumAuthorizationVersionSize = 32    // Maximum size for the version string
-	MinimumAuthorizationVersionSize = 1     // Minimum size for the version string
+	SessionAuthorizationVersion     = "SG1"
+	MaximumAuthorizationVersionSize = 32
+	MinimumAuthorizationVersionSize = 1
 )
 
-// SessionAuthorizationData defines the properties of the Authorization, including how to parse it.
 type SessionAuthorizationData struct {
-	CookieName     string // CookieName of the Authorization
-	CookiePath     string // CookiePath, for which the Authorization is valid (used when setting)
-	CookieDomain   string // CookieDomain, for which the Authorization is valid (used when setting)
-	CookieSecure   bool   // If true, Authorization only sent over HTTPS (used when setting)
-	CookieHttpOnly bool   // If true, Authorization cannot be accessed by client-side scripts (used when setting)
-	CookieSameSite string // CookieSameSite attribute (e.g., "Strict", "Lax", "None") (used when setting)
-
-	// AuthorizationHeaderName is the name of the Authorization header to be used.
-	// If not set, the default value is "X-Authorization".
+	CookieName              string
+	CookiePath              string
+	CookieDomain            string
+	CookieSecure            bool
+	CookieHttpOnly          bool
+	CookieSameSite          string
 	AuthorizationHeaderName string
-
-	// Delimiter is used to split the Authorization's value into parts.
-	// For example, if the Authorization value is "header.payload.signature", the delimiter is ".".
-	Delimiter string
-
-	// MaxAuthorizationSize is the maximum size of the Authorization in bytes, default is 4096 bytes.
-	MaxAuthorizationSize int
-
-	// Expiration is the expiration time of the session in seconds, after which the session is considered expired
-	// and can't be renewed.
-	// (Bearer & Cookie)
-	Expiration time.Duration
-
-	// RefreshTime is the time after which the session can be renewed, you can invalidate previous sessions
-	// if you want to.
-	//  (Cookie)
-	RefreshTime time.Duration
-
-	// VerifyTime is the time interval between token verification events for a bearer token.
-	// If this duration elapses without verification, the token will need to be re-verified.
-	// (Bearer)
-	VerifyTime time.Duration
+	Delimiter               string
+	MaxAuthorizationSize    int
+	Expiration              time.Duration
+	RefreshTime             time.Duration
+	VerifyTime              time.Duration
 }
 
-// EnsureBasicClaims checks if the claims contain the required basic information if not, set it.
 func ensureBasicClaims(group string, claims *SessionClaims, sessionManager SessionManager) error {
 	if claims == nil {
 		return errors.NewInternalServerError("Claims are nil", nil)
 	}
-
 	if sessionManager == nil {
 		return errors.NewInternalServerError("Session manager is nil", nil)
 	}
 
-	// - Session mode
 	claims.SetIfNotSet(SessionModeClaim, group)
 
-	// - Csrf Token Tie
 	newCsrfToken, err := helpers.GenerateID(helpers.AESKeySize32)
 	if err != nil {
 		return errors.NewInternalServerError("Failed to generate CSRF token", err)
 	}
 	claims.SetIfNotSet(CsrfTokenTie, newCsrfToken)
 
-	// - Session ID
 	newSessionId, err := helpers.GenerateID(helpers.AESKeySize32)
 	if err != nil {
 		return errors.NewInternalServerError("Failed to generate session ID", err)
 	}
 	claims.SetIfNotSet(SessionIdentifier, newSessionId)
 
-	// - Rbac Cache Identifier (Optional)
 	if sessionManager.GetRbacManager() != nil {
 		rbacCacheIdentifier, err := helpers.GenerateID(helpers.AESKeySize32)
 		if err != nil {
@@ -107,12 +82,11 @@ func ensureBasicClaims(group string, claims *SessionClaims, sessionManager Sessi
 		claims.SetIfNotSet(RbacCacheIdentifier, rbacCacheIdentifier)
 	}
 
-	// - Token version
 	claims.SetClaim(VersionClaim, SessionAuthorizationVersion)
 	return nil
 }
 
-// CreateAuthorization creates a Authorization with the specified name and value, and sets its attributes.
+// CreateAuthorization creates a secure, encrypted, and versioned authorization token.
 func CreateAuthorization(
 	group string,
 	authorizationHeader *SessionHeader,
@@ -123,21 +97,17 @@ func CreateAuthorization(
 	if sessionManager == nil {
 		return "", fmt.Errorf("session manager is nil")
 	}
-
 	if claims == nil {
 		return "", fmt.Errorf("claims are nil")
 	}
-
 	if authorizationHeader == nil {
 		return "", fmt.Errorf("authorization header is nil")
 	}
 
-	// - Ensure the claims are set
 	if err := ensureBasicClaims(group, claims, sessionManager); err != nil {
 		return "", fmt.Errorf("failed to ensure basic claims: %w", err)
 	}
 
-	// - Encode the Authorization header and payload
 	authorizationHeaderString, err := authorizationHeader.Encode()
 	if err != nil {
 		return "", fmt.Errorf("failed to encode header: %w", err)
@@ -149,64 +119,74 @@ func CreateAuthorization(
 	}
 
 	delimiter := helpers.DefaultString(authorizationData.Delimiter, DefaultSessionAuthorizationDelimiter)
-	AuthorizationValue := fmt.Sprintf("%s%s%s", authorizationHeaderString, delimiter, AuthorizationPayload)
+	authorizationValue := fmt.Sprintf("%s%s%s", authorizationHeaderString, delimiter, AuthorizationPayload)
 
-	// - Fetch the session key from the session manager
 	sessionKey, keyId, err := sessionManager.GetSessionKey()
 	if err != nil {
 		return "", fmt.Errorf("failed to get session key: %w", err)
 	}
 
-	if len(keyId) < MinimumSessionKeyIdSize {
-		return "", fmt.Errorf("keyId is too short, must be at least %d characters", MinimumSessionKeyIdSize)
+	if len(keyId) < MinimumSessionKeyIdSize || len(keyId) > MaximumSessionKeyIdSize {
+		return "", fmt.Errorf("invalid keyId size: must be between %d and %d characters", MinimumSessionKeyIdSize, MaximumSessionKeyIdSize)
 	}
 
-	if len(keyId) > MaximumSessionKeyIdSize {
-		return "", fmt.Errorf("keyId is too long, must be at most %d characters", MaximumSessionKeyIdSize)
-	}
-
-	// - Encrypt the Authorization value
-	encryptedValue, err := helpers.SymmetricEncrypt(sessionKey, []byte(AuthorizationValue), []byte(keyId+SessionAuthorizationVersion))
+	// Encrypt the value with the keyId and version as associated data for integrity.
+	associatedData := []byte(keyId + SessionAuthorizationVersion)
+	encryptedValue, err := helpers.SymmetricEncrypt(sessionKey, []byte(authorizationValue), associatedData)
 	if err != nil {
-		return "", fmt.Errorf("failed to encrypt Authorization value: %w", err)
+		return "", fmt.Errorf("failed to encrypt authorization value: %w", err)
 	}
 
-	// - Encode the encrypted value to base64
 	encodedValue := base64.RawURLEncoding.EncodeToString(encryptedValue)
 
-	return fmt.Sprintf("%s%s%s%s%s",
-		SessionAuthorizationVersion,
-		delimiter,
-		keyId,
-		delimiter,
-		encodedValue,
-	), nil
+	var sb strings.Builder
+
+	sb.Grow(len(SessionAuthorizationVersion) + len(delimiter) + len(keyId) + len(delimiter) + len(encodedValue))
+	sb.WriteString(SessionAuthorizationVersion)
+	sb.WriteString(delimiter)
+	sb.WriteString(keyId)
+	sb.WriteString(delimiter)
+	sb.WriteString(encodedValue)
+
+	return sb.String(), nil
 }
 
-// CreateRefreshAuthorization creates a Authorization with the specified name and value, and sets its attributes.
-func CreateRefreshAuthorization(authorizationData SessionAuthorizationData, claims *SessionClaims, oldSessionHeader *SessionHeader, sessionManager SessionManager) (string, error) {
+// CreateRefreshAuthorization generates a new token for an existing session, preserving its original expiration time.
+func CreateRefreshAuthorization(
+	authorizationData SessionAuthorizationData,
+	claims *SessionClaims,
+	oldSessionHeader *SessionHeader,
+	sessionManager SessionManager,
+) (string, error) {
 	if sessionManager == nil {
 		return "", fmt.Errorf("session manager is nil")
 	}
-
 	if claims == nil {
 		return "", fmt.Errorf("claims are nil")
 	}
-
 	if oldSessionHeader == nil {
 		return "", fmt.Errorf("old session header is nil")
 	}
 
 	mode, ok := claims.GetClaim(SessionModeClaim)
 	if !ok {
-		return "", fmt.Errorf("session mode claim is missing, cannot create refresh Authorization")
+		return "", fmt.Errorf("session mode claim is missing, cannot create refresh token")
 	}
 
-	// - We take the old expires at, - now and add set that to the dereferenced AuthorizationData
-	authorizationData.Expiration = time.Unix(oldSessionHeader.LifetimeSec, 0).Sub(time.Now())
+	// 1. Calculate the absolute expiration time of the original token.
+	absoluteExpiryTime := time.Unix(oldSessionHeader.IssuedAt+oldSessionHeader.LifetimeSec, 0)
+
+	// 2. Calculate the remaining duration from now until that absolute expiration.
+	newExpirationDuration := time.Until(absoluteExpiryTime)
+
+	// If the token is already expired, prevent a refresh.
+	if newExpirationDuration <= 0 {
+		return "", fmt.Errorf("cannot refresh an already expired token")
+	}
+
+	// 3. Create a new header with the remaining lifetime and a *new* IssuedAt timestamp.
 	sessionRefreshTime := helpers.DefaultTimeDuration(authorizationData.RefreshTime, DefaultSessionRefreshTime)
-	sessionExpiration := helpers.DefaultTimeDuration(authorizationData.Expiration, DefaultSessionExpiration)
-	authorizationHeader := NewSessionHeader(false, sessionExpiration, sessionRefreshTime)
+	authorizationHeader := NewSessionHeader(false, newExpirationDuration, sessionRefreshTime)
 
 	return CreateAuthorization(mode, &authorizationHeader, authorizationData, claims, sessionManager)
 }

@@ -7,7 +7,7 @@ import (
 	"github.com/grzegorzmaniak/gothic/helpers"
 )
 
-func applyCookie(
+func applySessionCookie(
 	ctx *gin.Context,
 	authData *SessionAuthorizationData,
 	value string,
@@ -101,7 +101,7 @@ func SetCustomSessionCookie(
 	}
 
 	expirationSeconds := int(helpers.DefaultTimeDuration(authorizationData.Expiration, DefaultSessionExpiration).Seconds())
-	applyCookie(ctx, authorizationData, authorizationString, expirationSeconds)
+	applySessionCookie(ctx, authorizationData, authorizationString, expirationSeconds)
 
 	csrfTie, _ := claims.GetClaim(CsrfTokenTie)
 	err = SetCsrfCookie(ctx, sessionManager, csrfTie)
@@ -163,7 +163,7 @@ func SetCustomRefreshSessionCookie(
 	}
 
 	expirationSeconds := int(helpers.DefaultTimeDuration(authorizationData.Expiration, DefaultSessionExpiration).Seconds())
-	applyCookie(ctx, authorizationData, authorizationString, expirationSeconds)
+	applySessionCookie(ctx, authorizationData, authorizationString, expirationSeconds)
 
 	return nil
 }
@@ -185,7 +185,7 @@ func ClearSessionCookie(
 		return errors.NewInternalServerError("Authorization data is nil", nil)
 	}
 
-	applyCookie(ctx, authorizationData, "", -1)
+	applySessionCookie(ctx, authorizationData, "", -1)
 
 	if err := ClearCsrfCookie(ctx, sessionManager); err != nil {
 		return errors.NewInternalServerError("Failed to clear session", err)
