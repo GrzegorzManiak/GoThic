@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-
-	"github.com/eko/gocache/lib/v4/store"
 )
 
 // GetRolePermissions retrieves permissions for a specific role.
@@ -15,37 +13,44 @@ func GetRolePermissions(
 	roleIdentifier string,
 	rbacManager Manager,
 ) (*Permissions, error) {
-	cacheInstance, cacheErr := rbacManager.GetCache()
-	if cacheErr != nil {
+	cacheInstance, err := rbacManager.GetCache()
+	if err != nil {
 		return rbacManager.GetRolePermissions(ctx, roleIdentifier)
 	}
 
-	cacheKey := fmt.Sprintf("%s%s", RolePermissionsCacheKeyPrefix, roleIdentifier)
+	cacheKey := RolePermissionsCacheKeyPrefix + roleIdentifier
 
-	cachedString, err := cacheInstance.Get(ctx, cacheKey)
-	if err == nil {
-		var permissions Permissions
-		if jsonErr := json.Unmarshal([]byte(cachedString), &permissions); jsonErr != nil {
-			return nil, fmt.Errorf("cache: failed to unmarshal cached permissions for role '%s': %w", roleIdentifier, jsonErr)
+	// - Try fetch from cache
+	perms, found, err := fetchFromCache(ctx, cacheInstance, cacheKey, func(s string) (*Permissions, error) {
+		var p Permissions
+		if err := json.Unmarshal([]byte(s), &p); err != nil {
+			return nil, err
 		}
-		return &permissions, nil
+		return &p, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if found {
+		return perms, nil
 	}
 
-	sourcePermissions, fetchErr := rbacManager.GetRolePermissions(ctx, roleIdentifier)
-	if fetchErr != nil {
-		return nil, fmt.Errorf("manager: failed to fetch role permissions for '%s': %w", roleIdentifier, fetchErr)
+	// - Cache miss - get from manager
+	sourcePerms, err := rbacManager.GetRolePermissions(ctx, roleIdentifier)
+	if err != nil {
+		return nil, fmt.Errorf("manager: failed to fetch role permissions for '%s': %w", roleIdentifier, err)
+	}
+	if sourcePerms == nil {
+		return nil, nil
 	}
 
-	if sourcePermissions != nil {
-		permsBytesToCache, jsonErr := json.Marshal(sourcePermissions)
-		if jsonErr != nil {
-			return nil, fmt.Errorf("cache: failed to marshal permissions for caching for role '%s': %w", roleIdentifier, jsonErr)
-		}
-		cacheTTL := rbacManager.GetRolePermissionsCacheTtl()
-		if errSet := cacheInstance.Set(ctx, cacheKey, string(permsBytesToCache), store.WithExpiration(cacheTTL)); errSet != nil {
-			return nil, fmt.Errorf("cache: failed to set permissions in cache for role '%s': %w", roleIdentifier, errSet)
-		}
-	}
+	// - Cache the result asynchronously (optional, but cleaner)
+	go func() {
+		_ = setInCache(ctx, cacheInstance, cacheKey, sourcePerms, rbacManager.GetRolePermissionsCacheTtl(), func(p *Permissions) (string, error) {
+			b, err := json.Marshal(p)
+			return string(b), err
+		})
+	}()
 
-	return sourcePermissions, nil
+	return sourcePerms, nil
 }

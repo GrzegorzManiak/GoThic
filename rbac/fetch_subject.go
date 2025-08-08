@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/eko/gocache/lib/v4/cache"
-	"github.com/eko/gocache/lib/v4/store"
 	"go.uber.org/zap"
 	"sync"
 )
@@ -14,56 +13,26 @@ func FetchSubjectPermissionsFromCache(
 	ctx context.Context,
 	rbacCacheId string,
 	cacheInstance cache.CacheInterface[string],
-) (permissions *Permission, cacheHit bool, err error) {
-	userPermsKey := fmt.Sprintf("%s%s", SubjectPermissionsCacheKeyPrefix, rbacCacheId)
-
-	cachedPermsString, getErr := cacheInstance.Get(ctx, userPermsKey)
-	if getErr != nil {
-		// - Cache miss, fetch from rbacManager
-		return nil, false, nil
-	}
-
-	// - Cache hit, unmarshal permissions
-	p, err := DeserializePermission(cachedPermsString)
-	if err != nil {
-		return nil, false, fmt.Errorf("cache A: failed to deserialize cached permissions for '%s': %w", rbacCacheId, err)
-	}
-
-	if p == nil {
-		// - If permissions are nil, return nil and cache hit as false
-		return nil, false, nil
-	}
-
-	// - Check if permissions are nil (or empty) and return them
-	return p, true, nil
+) (*Permission, bool, error) {
+	key := SubjectPermissionsCacheKeyPrefix + rbacCacheId
+	return fetchFromCache(ctx, cacheInstance, key, func(s string) (*Permission, error) {
+		return DeserializePermission(s)
+	})
 }
 
 func FetchSubjectRolesFromCache(
 	ctx context.Context,
 	rbacCacheId string,
 	cacheInstance cache.CacheInterface[string],
-) (roles *[]string, cacheHit bool, err error) {
-	userRolesKey := fmt.Sprintf("%s%s", SubjectRolesCacheKeyPrefix, rbacCacheId)
-
-	cachedRolesString, getErr := cacheInstance.Get(ctx, userRolesKey)
-	if getErr != nil {
-		// - Cache miss, fetch from rbacManager
-		return nil, false, nil
-	}
-
-	// - Cache hit, unmarshal JSON bytes
-	r := &[]string{}
-	if jsonErr := json.Unmarshal([]byte(cachedRolesString), r); jsonErr != nil {
-		return nil, false, fmt.Errorf("cache A: failed to unmarshal cached roles for '%s': %w", rbacCacheId, jsonErr)
-	}
-
-	if r == nil {
-		// - If roles are nil, return nil and cache hit as false
-		return nil, false, nil
-	}
-
-	// - Check if permissions are nil (or empty) and return them
-	return r, true, nil
+) (*[]string, bool, error) {
+	key := SubjectRolesCacheKeyPrefix + rbacCacheId
+	return fetchFromCache(ctx, cacheInstance, key, func(s string) (*[]string, error) {
+		var roles []string
+		if err := json.Unmarshal([]byte(s), &roles); err != nil {
+			return nil, err
+		}
+		return &roles, nil
+	})
 }
 
 func CacheRoles(
@@ -75,21 +44,11 @@ func CacheRoles(
 	if roles == nil {
 		return nil
 	}
-
-	// - Marshal the roles slice into JSON bytes
-	rolesBytes, jsonErr := json.Marshal(roles)
-	if jsonErr != nil {
-		return fmt.Errorf("cache: failed to marshal roles for caching for '%s': %w", rbacCacheId, jsonErr)
-	}
-
-	// - Set the cache with the role bytes
-	cacheTTL := DefaultRolePermissionsCacheTTL
-	userRolesKey := fmt.Sprintf("%s%s", SubjectRolesCacheKeyPrefix, rbacCacheId)
-	if errSet := cacheInstance.Set(ctx, userRolesKey, string(rolesBytes), store.WithExpiration(cacheTTL)); errSet != nil {
-		return fmt.Errorf("cache: failed to set roles in cache for '%s': %w", rbacCacheId, errSet)
-	}
-
-	return nil
+	key := SubjectRolesCacheKeyPrefix + rbacCacheId
+	return setInCache(ctx, cacheInstance, key, roles, DefaultRolePermissionsCacheTTL, func(v *[]string) (string, error) {
+		b, err := json.Marshal(v)
+		return string(b), err
+	})
 }
 
 func CachePermissions(
@@ -101,98 +60,70 @@ func CachePermissions(
 	if permissions == nil {
 		return nil
 	}
-
-	// - Set the cache with the permissions bytes
-	cacheTTL := DefaultSubjectPermissionsCacheTTL
-	userPermsKey := fmt.Sprintf("%s%s", SubjectPermissionsCacheKeyPrefix, rbacCacheId)
-	if errSet := cacheInstance.Set(ctx, userPermsKey, permissions.Serialize(), store.WithExpiration(cacheTTL)); errSet != nil {
-		return fmt.Errorf("cache: failed to set permissions in cache for '%s': %w", rbacCacheId, errSet)
-	}
-
-	return nil
+	key := SubjectPermissionsCacheKeyPrefix + rbacCacheId
+	return setInCache(ctx, cacheInstance, key, permissions, DefaultSubjectPermissionsCacheTTL, func(p *Permission) (string, error) {
+		return p.Serialize(), nil
+	})
 }
 
-// FetchSubjectRolesAndPermissions retrieves a subject's roles and direct permissions.
-// It first checks the cache for both. If not found, it fetches from the rbacManager
-// and caches the results as JSON byte arrays.
 func FetchSubjectRolesAndPermissions(
 	ctx context.Context,
 	subjectIdentifier string,
 	rbacCacheId string,
 	rbacManager Manager,
-) (permissions *Permission, roles *[]string, err error) {
-	cacheInstance, cacheErr := rbacManager.GetCache()
-
-	// - Fallback on always fetching from the rbacManager if cache is not available.
-	if cacheErr != nil {
-		zap.L().Warn("RBAC cache not available, fetching directly from manager", zap.Error(cacheErr))
-		permissions, role, err := rbacManager.GetSubjectRolesAndPermissions(ctx, subjectIdentifier)
-		if err != nil {
-			return nil, nil, fmt.Errorf("manager: failed to fetch subject data for '%s': %w", rbacCacheId, err)
+) (*Permission, *[]string, error) {
+	cacheInstance, err := rbacManager.GetCache()
+	if err != nil {
+		zap.L().Warn("RBAC cache not available, fetching directly from manager", zap.Error(err))
+		perms, roles, fetchErr := rbacManager.GetSubjectRolesAndPermissions(ctx, subjectIdentifier)
+		if fetchErr != nil {
+			return nil, nil, fmt.Errorf("manager: failed to fetch subject data for '%s': %w", rbacCacheId, fetchErr)
 		}
-		return permissions.Flatten(), role, nil
+		return perms.Flatten(), roles, nil
 	}
 
 	var (
-		loadedPermissions *Permission
-		loadedRoles       *[]string
-		foundPermsInCache bool
-		foundRolesInCache bool
-		wg                sync.WaitGroup
-		permsCacheErr     error
-		rolesCacheErr     error
+		perms    *Permission
+		roles    *[]string
+		hitPerms bool
+		hitRoles bool
+		errPerms error
+		errRoles error
+		wg       sync.WaitGroup
 	)
 
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		loadedPermissions, foundPermsInCache, permsCacheErr =
-			FetchSubjectPermissionsFromCache(ctx, rbacCacheId, cacheInstance)
+		perms, hitPerms, errPerms = FetchSubjectPermissionsFromCache(ctx, rbacCacheId, cacheInstance)
 	}()
-
 	go func() {
 		defer wg.Done()
-		loadedRoles, foundRolesInCache, rolesCacheErr =
-			FetchSubjectRolesFromCache(ctx, rbacCacheId, cacheInstance)
+		roles, hitRoles, errRoles = FetchSubjectRolesFromCache(ctx, rbacCacheId, cacheInstance)
 	}()
 	wg.Wait()
 
-	// - If there was an error while fetching permissions from cache, return the error.
-	if permsCacheErr != nil {
-		return nil, nil, permsCacheErr
+	if errPerms != nil {
+		return nil, nil, errPerms
+	}
+	if errRoles != nil {
+		return nil, nil, errRoles
+	}
+	if hitPerms && hitRoles {
+		return perms, roles, nil
 	}
 
-	// - If there was an error while fetching roles from cache, return the error.
-	if rolesCacheErr != nil {
-		return nil, nil, rolesCacheErr
-	}
-
-	// - If both permissions and roles were successfully found and unmarshalled from cache, return them.
-	if foundPermsInCache && foundRolesInCache {
-		return loadedPermissions, loadedRoles, nil
-	}
-
-	// - If one or both items were not in cache, fetch from the rbacManager.
-	// This call fetches both permissions and roles from the source of truth.
-	sourcePermissions, sourceRoles, fetchErr := rbacManager.GetSubjectRolesAndPermissions(ctx, subjectIdentifier)
+	srcPerms, srcRoles, fetchErr := rbacManager.GetSubjectRolesAndPermissions(ctx, subjectIdentifier)
 	if fetchErr != nil {
 		return nil, nil, fmt.Errorf("manager: failed to fetch subject data for '%s': %w", rbacCacheId, fetchErr)
 	}
 
-	// - Cache the fetched permissions and roles for future use.
-	if err := CachePermissions(ctx, rbacCacheId, cacheInstance, sourcePermissions.Flatten()); err != nil {
-		zap.L().Warn("RBAC: Failed to cache user permissions",
-			zap.String("subjectIdentifier", subjectIdentifier),
-			zap.String("rbacCacheId", rbacCacheId),
-			zap.Error(err))
+	if err := CachePermissions(ctx, rbacCacheId, cacheInstance, srcPerms.Flatten()); err != nil {
+		zap.L().Warn("RBAC: Failed to cache user permissions", zap.String("subjectIdentifier", subjectIdentifier), zap.String("rbacCacheId", rbacCacheId), zap.Error(err))
+	}
+	if err := CacheRoles(ctx, rbacCacheId, cacheInstance, srcRoles); err != nil {
+		zap.L().Warn("RBAC: Failed to cache user roles", zap.String("subjectIdentifier", subjectIdentifier), zap.String("rbacCacheId", rbacCacheId), zap.Error(err))
 	}
 
-	if err := CacheRoles(ctx, rbacCacheId, cacheInstance, sourceRoles); err != nil {
-		zap.L().Warn("RBAC: Failed to cache user roles",
-			zap.String("subjectIdentifier", subjectIdentifier),
-			zap.String("rbacCacheId", rbacCacheId),
-			zap.Error(err))
-	}
-
-	return sourcePermissions.Flatten(), sourceRoles, nil
+	return srcPerms.Flatten(), srcRoles, nil
 }
