@@ -176,7 +176,7 @@ func BearerSetCache(
 	}
 
 	// - Set the new refresh time in the cache
-	cacheTTL := time.Duration(header.RefreshAt) * time.Second
+	cacheTTL := time.Duration(header.RefreshPeriodSec) * time.Second
 	refreshTime := time.Now().Add(cacheTTL).Unix()
 	if err = cache.Set(ctx, cacheKey, strconv.FormatInt(refreshTime, 10), store.WithExpiration(cacheTTL)); err != nil {
 		return fmt.Errorf("failed to set cache: %w", err)

@@ -121,8 +121,8 @@ func AuthenticatedResourceHandler(input *ExampleInput, data *AppHandlerContext) 
 
 	if data.SessionHeader != nil {
 		output.SessionGroup = data.SessionGroup
-		output.SessionExpiresAt = data.SessionHeader.ExpiresAt + data.SessionHeader.IssuedAt
-		output.SessionRefreshesAt = data.SessionHeader.RefreshAt + data.SessionHeader.IssuedAt
+		output.SessionExpiresAt = data.SessionHeader.LifetimeSec + data.SessionHeader.IssuedAt
+		output.SessionRefreshesAt = data.SessionHeader.RefreshPeriodSec + data.SessionHeader.IssuedAt
 	}
 
 	if data.HasSession && data.Claims != nil {

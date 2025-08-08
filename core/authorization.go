@@ -203,7 +203,7 @@ func CreateRefreshAuthorization(authorizationData SessionAuthorizationData, clai
 	}
 
 	// - We take the old expires at, - now and add set that to the dereferenced AuthorizationData
-	authorizationData.Expiration = time.Unix(oldSessionHeader.ExpiresAt, 0).Sub(time.Now())
+	authorizationData.Expiration = time.Unix(oldSessionHeader.LifetimeSec, 0).Sub(time.Now())
 	sessionRefreshTime := helpers.DefaultTimeDuration(authorizationData.RefreshTime, DefaultSessionRefreshTime)
 	sessionExpiration := helpers.DefaultTimeDuration(authorizationData.Expiration, DefaultSessionExpiration)
 	authorizationHeader := NewSessionHeader(false, sessionExpiration, sessionRefreshTime)
