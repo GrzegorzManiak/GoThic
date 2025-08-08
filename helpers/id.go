@@ -3,22 +3,22 @@ package helpers
 import (
 	"crypto/rand"
 	"fmt"
-	"math/big"
+	"io"
 )
 
 const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
 func GenerateID(length int) (string, error) {
-	b := make([]byte, length)
-	maxInt := big.NewInt(int64(len(charset)))
+	randomBytes := make([]byte, length)
 
-	for i := range b {
-		n, err := rand.Int(rand.Reader, maxInt)
-		if err != nil {
-			return "", fmt.Errorf("crypto/rand.Int failed: %w", err)
-		}
-		b[i] = charset[n.Int64()]
+	if _, err := io.ReadFull(rand.Reader, randomBytes); err != nil {
+		return "", fmt.Errorf("failed to read random bytes: %w", err)
 	}
 
-	return string(b), nil
+	result := make([]byte, length)
+	for i, b := range randomBytes {
+		result[i] = charset[int(b)%len(charset)]
+	}
+
+	return string(result), nil
 }
