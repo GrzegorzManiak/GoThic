@@ -49,15 +49,11 @@ func BasicActionHandler(input *ExampleInput, data *AppHandlerContext) (*ExampleO
 	// In a real login handler, you would populate claims with user ID, roles, etc.
 	// In other handlers, you might refresh existing claims or modify them.
 	newSessionClaims := &core.SessionClaims{}
-	err := newSessionClaims.SetClaim("session_data", "some_session_data")
-	if err != nil {
-		// If setting claims fails, return an internal server error.
-		return nil, errors.NewInternalServerError("Failed to set session claims", err)
-	}
+	newSessionClaims.SetClaim("session_data", "some_session_data")
 
 	// Attempt to set/issue a new session cookie.
 	// "Guest_session" is an example session mode/group.
-	err = core.SetSessionCookie(
+	err := core.SetSessionCookie(
 		data.Context,        // The request context (e.g., *gin.Context from core.Handler)
 		data.SessionManager, // The session manager instance (from core.Handler)
 		"guest_session",     // The desired session mode/group for the new cookie

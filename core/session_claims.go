@@ -32,22 +32,20 @@ func (d *SessionClaims) GetClaim(claim string) (string, bool) {
 	return value, ok
 }
 
-func (d *SessionClaims) SetClaim(claim string, value string) error {
+func (d *SessionClaims) SetClaim(claim string, value string) {
 	if d.Claims == nil {
 		d.Claims = make(map[string]string)
 	}
 	d.Claims[claim] = value
-	return nil
 }
 
-func (d *SessionClaims) SetIfNotSet(claim string, value string) error {
+func (d *SessionClaims) SetIfNotSet(claim string, value string) {
 	if d.Claims == nil {
 		d.Claims = make(map[string]string)
 	}
-	if !d.HasClaim(claim) {
+	if _, ok := d.Claims[claim]; !ok {
 		d.Claims[claim] = value
 	}
-	return nil
 }
 
 func (d *SessionClaims) EncodePayload() (string, error) {

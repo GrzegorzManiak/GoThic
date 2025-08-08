@@ -1,6 +1,7 @@
 package errors
 
 import (
+	"errors"
 	"fmt"
 	"github.com/go-playground/validator/v10"
 )
@@ -46,7 +47,8 @@ func FormatValidationErrors(err error) interface{} {
 		return nil
 	}
 
-	if ves, ok := err.(validator.ValidationErrors); ok {
+	var ves validator.ValidationErrors
+	if errors.As(err, &ves) {
 		out := make(map[string]string)
 		for _, fe := range ves {
 			out[fe.Namespace()] = fmt.Sprintf("failed on validation tag '%s'", fe.Tag())

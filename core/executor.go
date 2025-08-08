@@ -303,7 +303,7 @@ func processAndSendHandlerOutput[OutputType any](
 	}
 
 	// - Success response
-	helpers.SuccessResponse(ctx, responseBody, responseHeaders)
+	helpers.SuccessResponse(ctx, 200, responseBody, responseHeaders)
 	return nil
 }
 

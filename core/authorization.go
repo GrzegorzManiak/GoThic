@@ -82,27 +82,21 @@ func ensureBasicClaims(group string, claims *SessionClaims, sessionManager Sessi
 	}
 
 	// - Session mode
-	if setErr := claims.SetIfNotSet(SessionModeClaim, group); setErr != nil {
-		return errors.NewInternalServerError("Failed to set session mode claim", setErr)
-	}
+	claims.SetIfNotSet(SessionModeClaim, group)
 
 	// - Csrf Token Tie
 	newCsrfToken, err := helpers.GenerateID(helpers.AESKeySize32)
 	if err != nil {
 		return errors.NewInternalServerError("Failed to generate CSRF token", err)
 	}
-	if setErr := claims.SetIfNotSet(CsrfTokenTie, newCsrfToken); setErr != nil {
-		return errors.NewInternalServerError("Failed to set CSRF token", setErr)
-	}
+	claims.SetIfNotSet(CsrfTokenTie, newCsrfToken)
 
 	// - Session ID
 	newSessionId, err := helpers.GenerateID(helpers.AESKeySize32)
 	if err != nil {
 		return errors.NewInternalServerError("Failed to generate session ID", err)
 	}
-	if setErr := claims.SetIfNotSet(SessionIdentifier, newSessionId); setErr != nil {
-		return errors.NewInternalServerError("Failed to set session ID", setErr)
-	}
+	claims.SetIfNotSet(SessionIdentifier, newSessionId)
 
 	// - Rbac Cache Identifier (Optional)
 	if sessionManager.GetRbacManager() != nil {
@@ -110,17 +104,11 @@ func ensureBasicClaims(group string, claims *SessionClaims, sessionManager Sessi
 		if err != nil {
 			return errors.NewInternalServerError("Failed to generate RBAC cache identifier", err)
 		}
-
-		if setErr := claims.SetIfNotSet(RbacCacheIdentifier, rbacCacheIdentifier); setErr != nil {
-			return errors.NewInternalServerError("Failed to set RBAC cache identifier", setErr)
-		}
+		claims.SetIfNotSet(RbacCacheIdentifier, rbacCacheIdentifier)
 	}
 
 	// - Token version
-	if setErr := claims.SetClaim(VersionClaim, SessionAuthorizationVersion); setErr != nil {
-		return errors.NewInternalServerError("Failed to set version claim", setErr)
-	}
-
+	claims.SetClaim(VersionClaim, SessionAuthorizationVersion)
 	return nil
 }
 
