@@ -46,7 +46,7 @@ type Manager interface {
 
 	// GetCache returns a configured gocache CacheInterface instance.
 	// This cache is used internally by the Manager for optimizing RBAC data retrieval (e.g., caching role-permission mappings or subject roles)
-	GetCache() (cache.CacheInterface[string], error)
+	GetCache() (cache.CacheInterface[[]byte], error)
 
 	// GetSubjectPermissionsCacheTtl returns the TTL for subject-specific permission entries in the cache.
 	GetSubjectPermissionsCacheTtl() time.Duration

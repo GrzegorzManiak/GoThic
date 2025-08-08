@@ -12,24 +12,26 @@ import (
 func FetchSubjectPermissionsFromCache(
 	ctx context.Context,
 	rbacCacheId string,
-	cacheInstance cache.CacheInterface[string],
+	cacheInstance cache.CacheInterface[[]byte],
 ) (*Permission, bool, error) {
 	key := SubjectPermissionsCacheKeyPrefix + rbacCacheId
-	return fetchFromCache(ctx, cacheInstance, key, func(s string) (*Permission, error) {
-		return DeserializePermission(s)
+	return fetchFromCache(ctx, cacheInstance, key, func(b []byte) (*Permission, error) {
+		p := new(Permission)
+		err := p.UnmarshalBinary(b)
+		return p, err
 	})
 }
 
 func FetchSubjectRolesFromCache(
 	ctx context.Context,
 	rbacCacheId string,
-	cacheInstance cache.CacheInterface[string],
+	cacheInstance cache.CacheInterface[[]byte],
 ) (*[]string, bool, error) {
 	key := SubjectRolesCacheKeyPrefix + rbacCacheId
-	return fetchFromCache(ctx, cacheInstance, key, func(s string) (*[]string, error) {
+	return fetchFromCache(ctx, cacheInstance, key, func(b []byte) (*[]string, error) {
 		var roles []string
-		if err := json.Unmarshal([]byte(s), &roles); err != nil {
-			return nil, err
+		if err := json.Unmarshal(b, &roles); err != nil {
+			return nil, fmt.Errorf("cache: failed to unmarshal roles for key '%s': %w", key, err)
 		}
 		return &roles, nil
 	})
@@ -38,31 +40,37 @@ func FetchSubjectRolesFromCache(
 func CacheRoles(
 	ctx context.Context,
 	rbacCacheId string,
-	cacheInstance cache.CacheInterface[string],
+	cacheInstance cache.CacheInterface[[]byte],
 	roles *[]string,
 ) error {
 	if roles == nil {
 		return nil
 	}
 	key := SubjectRolesCacheKeyPrefix + rbacCacheId
-	return setInCache(ctx, cacheInstance, key, roles, DefaultRolePermissionsCacheTTL, func(v *[]string) (string, error) {
-		b, err := json.Marshal(v)
-		return string(b), err
+	return setInCache(ctx, cacheInstance, key, roles, DefaultRolePermissionsCacheTTL, func(v *[]string) ([]byte, error) {
+		if v == nil {
+			return nil, nil
+		}
+		data, err := json.Marshal(v)
+		if err != nil {
+			return nil, fmt.Errorf("cache: failed to marshal roles for key '%s': %w", key, err)
+		}
+		return data, nil
 	})
 }
 
 func CachePermissions(
 	ctx context.Context,
 	rbacCacheId string,
-	cacheInstance cache.CacheInterface[string],
+	cacheInstance cache.CacheInterface[[]byte],
 	permissions *Permission,
 ) error {
 	if permissions == nil {
 		return nil
 	}
 	key := SubjectPermissionsCacheKeyPrefix + rbacCacheId
-	return setInCache(ctx, cacheInstance, key, permissions, DefaultSubjectPermissionsCacheTTL, func(p *Permission) (string, error) {
-		return p.Serialize(), nil
+	return setInCache(ctx, cacheInstance, key, permissions, DefaultSubjectPermissionsCacheTTL, func(v *Permission) ([]byte, error) {
+		return v.MarshalBinary()
 	})
 }
 

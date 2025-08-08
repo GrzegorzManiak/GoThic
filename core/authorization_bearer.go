@@ -132,12 +132,12 @@ func BearerNeedsValidation(
 		return cacheKey, true, nil
 	}
 
-	if cachedSession == "" {
+	if cachedSession == nil {
 		return "", false, nil
 	}
 
 	// - Stored as a Unix timestamp; after this time, the session requires validation
-	timeStamp, convErr := strconv.ParseInt(cachedSession, 10, 64)
+	timeStamp, convErr := strconv.ParseInt(string(cachedSession), 10, 64)
 	if convErr != nil {
 		return "", false, fmt.Errorf("failed to convert cached session to int: %w", convErr)
 	}
@@ -178,7 +178,7 @@ func BearerSetCache(
 	// - Set the new refresh time in the cache
 	cacheTTL := time.Duration(header.RefreshPeriodSec) * time.Second
 	refreshTime := time.Now().Add(cacheTTL).Unix()
-	if err = cache.Set(ctx, cacheKey, strconv.FormatInt(refreshTime, 10), store.WithExpiration(cacheTTL)); err != nil {
+	if err = cache.Set(ctx, cacheKey, []byte(strconv.FormatInt(refreshTime, 10)), store.WithExpiration(cacheTTL)); err != nil {
 		return fmt.Errorf("failed to set cache: %w", err)
 	}
 

@@ -165,3 +165,21 @@ func AuthenticatedResourceHandler(input *ExampleInput, data *AppHandlerContext) 
 
 	return output, nil
 }
+
+var AuthenticatedEmptyResourceHandlerConfig = &core.APIConfiguration{
+	SessionRequired: true,
+	Allow:           []string{"guest_session", "user_session"},
+	Permissions: rbac.Permissions{
+		ReadWriteSessionData,
+		ReadOnlySessionData,
+	},
+	RbacPolicy: rbac.PermissionsAndRole,
+	Roles:      &[]string{"test", "test2"},
+}
+
+type AuthenticatedEmptyResourceOutput struct {
+}
+
+func AuthenticatedEmptyResourceHandler(input *ExampleInput, data *AppHandlerContext) (*AuthenticatedResourceOutput, *errors.AppError) {
+	return &AuthenticatedResourceOutput{}, nil
+}

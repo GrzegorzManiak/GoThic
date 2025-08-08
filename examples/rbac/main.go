@@ -41,6 +41,8 @@ func main() {
 	// - Or Shorthand version
 	core.GET(router, "/auth", baseRoute, AuthenticatedResourceHandlerConfig, mySessionManager, AuthenticatedResourceHandler)
 
+	core.GET(router, "/authEmpty", baseRoute, AuthenticatedEmptyResourceHandlerConfig, mySessionManager, AuthenticatedEmptyResourceHandler)
+
 	httpAddr := fmt.Sprintf("%s:%s", "localhost", "8080")
 	if err := router.Run(httpAddr); err != nil {
 		fmt.Printf("Failed to start server: %v\n", err)

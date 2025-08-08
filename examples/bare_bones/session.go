@@ -23,7 +23,7 @@ type AppSessionManager struct {
 
 // GetCache returns the cache for this session manager.
 // This method is part of the core.SessionManager interface.
-func (m *AppSessionManager) GetCache() (cache.CacheInterface[string], error) {
+func (m *AppSessionManager) GetCache() (cache.CacheInterface[[]byte], error) {
 	return m.Cache.GetCache()
 }
 

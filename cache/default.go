@@ -44,12 +44,12 @@ type DefaultCacheConfig struct {
 
 type DefaultCacheManager struct {
 	CacheConfig    DefaultCacheConfig
-	CacheInstance  cache.CacheInterface[string]
+	CacheInstance  cache.CacheInterface[[]byte]
 	CacheInitOnce  sync.Once
 	CacheInitError error
 }
 
-func (m *DefaultCacheManager) GetCache() (cache.CacheInterface[string], error) {
+func (m *DefaultCacheManager) GetCache() (cache.CacheInterface[[]byte], error) {
 	m.CacheInitOnce.Do(func() {
 		ristrettoClient, err := ristretto.NewCache(&ristretto.Config{
 			NumCounters: helpers.DefaultInt64(m.CacheConfig.RistrettoNumCounters, DefaultRistrettoNumCounters),
@@ -59,7 +59,7 @@ func (m *DefaultCacheManager) GetCache() (cache.CacheInterface[string], error) {
 		})
 
 		if err != nil {
-			zap.L().Error("DefaultRBACManager: Failed to create Ristretto cache client during initialization", zap.Error(err))
+			zap.L().Error("DefaultCacheManager: Failed to create Ristretto cache client during initialization", zap.Error(err))
 			m.CacheInitError = fmt.Errorf("ristretto client initialization failed: %w", err)
 			return
 		}
@@ -72,8 +72,8 @@ func (m *DefaultCacheManager) GetCache() (cache.CacheInterface[string], error) {
 			)),
 		)
 
-		m.CacheInstance = cache.New[string](ristrettoStoreAdapter)
-		zap.L().Info("DefaultRBACManager: Ristretto cache instance initialized successfully.")
+		m.CacheInstance = cache.New[[]byte](ristrettoStoreAdapter)
+		zap.L().Info("DefaultCacheManager: Ristretto cache instance initialized successfully.")
 	})
 
 	if m.CacheInitError != nil {
@@ -81,7 +81,7 @@ func (m *DefaultCacheManager) GetCache() (cache.CacheInterface[string], error) {
 	}
 
 	if m.CacheInstance == nil {
-		zap.L().Error("DefaultRBACManager: Cache instance is nil after initialization attempt without a stored error.")
+		zap.L().Error("DefaultCacheManager: Cache instance is nil after initialization attempt without a stored error.")
 		return nil, fmt.Errorf("internal error: cache not initialized despite no explicit init error")
 	}
 

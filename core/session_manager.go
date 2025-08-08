@@ -51,7 +51,7 @@ type SessionManager interface {
 
 	// GetCache Is used to get the cache for the session manager, we use it to cache authorization, speeds things
 	// up a lot, you can use the same cache from rbac manager, but that's not recommended.
-	GetCache() (cache.CacheInterface[string], error)
+	GetCache() (cache.CacheInterface[[]byte], error)
 }
 
 type DefaultSessionManager struct{}

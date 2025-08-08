@@ -21,9 +21,9 @@ func GetRolePermissions(
 	cacheKey := RolePermissionsCacheKeyPrefix + roleIdentifier
 
 	// - Try fetch from cache
-	perms, found, err := fetchFromCache(ctx, cacheInstance, cacheKey, func(s string) (*Permissions, error) {
+	perms, found, err := fetchFromCache(ctx, cacheInstance, cacheKey, func(s []byte) (*Permissions, error) {
 		var p Permissions
-		if err := json.Unmarshal([]byte(s), &p); err != nil {
+		if err := json.Unmarshal(s, &p); err != nil {
 			return nil, err
 		}
 		return &p, nil
@@ -46,9 +46,8 @@ func GetRolePermissions(
 
 	// - Cache the result asynchronously (optional, but cleaner)
 	go func() {
-		_ = setInCache(ctx, cacheInstance, cacheKey, sourcePerms, rbacManager.GetRolePermissionsCacheTtl(), func(p *Permissions) (string, error) {
-			b, err := json.Marshal(p)
-			return string(b), err
+		_ = setInCache(ctx, cacheInstance, cacheKey, sourcePerms, rbacManager.GetRolePermissionsCacheTtl(), func(p *Permissions) ([]byte, error) {
+			return json.Marshal(p)
 		})
 	}()
 

@@ -10,9 +10,9 @@ import (
 
 func fetchFromCache[T any](
 	ctx context.Context,
-	cache cache.CacheInterface[string],
+	cache cache.CacheInterface[[]byte],
 	key string,
-	unmarshal func(string) (T, error),
+	unmarshal func([]byte) (T, error),
 ) (T, bool, error) {
 	var zero T
 	val, err := cache.Get(ctx, key)
@@ -29,11 +29,11 @@ func fetchFromCache[T any](
 
 func setInCache[T any](
 	ctx context.Context,
-	cache cache.CacheInterface[string],
+	cache cache.CacheInterface[[]byte],
 	key string,
 	value T,
 	ttl time.Duration,
-	marshal func(T) (string, error),
+	marshal func(T) ([]byte, error),
 ) error {
 	str, err := marshal(value)
 	if err != nil {

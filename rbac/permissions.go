@@ -2,6 +2,7 @@ package rbac
 
 import (
 	"encoding/base64"
+	"errors"
 	"math/big"
 )
 
@@ -41,26 +42,45 @@ func (p *Permission) Or(other *Permission) *Permission {
 	return (*Permission)(new(big.Int).Or((*big.Int)(p), (*big.Int)(other)))
 }
 
-func (p *Permission) Serialize() string {
-	// - Convert the big.Int to a byte slice.
-	bytes := (*big.Int)(p).Bytes()
+// MarshalBinary implements the encoding.BinaryMarshaler interface.
+// It returns the raw byte representation of the permission's big.Int.
+func (p *Permission) MarshalBinary() ([]byte, error) {
+	if p == nil {
+		return nil, errors.New("cannot marshal nil Permission")
+	}
+	return (*big.Int)(p).Bytes(), nil
+}
 
-	// - Encode the byte slice to a base64 string.
+// UnmarshalBinary implements the encoding.BinaryUnmarshaler interface.
+// It sets the permission's big.Int from a raw byte slice.
+func (p *Permission) UnmarshalBinary(data []byte) error {
+	if p == nil {
+		return errors.New("cannot unmarshal into nil Permission")
+	}
+	(*big.Int)(p).SetBytes(data)
+	return nil
+}
+
+// Serialize returns the permission as a base64 encoded string for use in text-based formats like JSON.
+func (p *Permission) Serialize() string {
+	bytes, _ := p.MarshalBinary()
+	if bytes == nil {
+		return "" // - Handle nil case gracefully (e.g., no permissions set)
+	}
 	return base64.RawURLEncoding.EncodeToString(bytes)
 }
 
+// DeserializePermission decodes a base64 string into a Permission.
 func DeserializePermission(encoded string) (*Permission, error) {
-	// - Decode the base64 string to a byte slice.
 	bytes, err := base64.RawURLEncoding.DecodeString(encoded)
 	if err != nil {
 		return nil, err
 	}
-
-	// - Create a new big.Int from the byte slice.
-	b := new(big.Int).SetBytes(bytes)
-
-	// - Return a new Permission pointer.
-	return (*Permission)(b), nil
+	p := new(Permission)
+	if err := p.UnmarshalBinary(bytes); err != nil { // Reuse binary unmarshaler
+		return nil, err
+	}
+	return p, nil
 }
 
 // Permissions is a slice of Permission pointers, representing a collection of permissions
