@@ -1,9 +1,10 @@
 package validation
 
 import (
+	"reflect"
+
 	"github.com/grzegorzmaniak/gothic/errors"
 	"go.uber.org/zap"
-	"reflect"
 )
 
 // OutputData validates the output struct and prepares headers and body for response.
@@ -35,6 +36,10 @@ func OutputData[Output any](output *Output) (map[string]string, *Output, *errors
 	for i := 0; i < typ.NumField(); i++ {
 		field := typ.Field(i)
 		if headerTag, ok := field.Tag.Lookup("header"); ok {
+			if field.Type.Kind() != reflect.String {
+				zap.L().Warn("Header field is not of type string, skipping", zap.String("field", field.Name))
+				continue
+			}
 			headerValue := val.Field(i).String()
 			headers[headerTag] = headerValue
 		}

@@ -1,33 +1,13 @@
 package validation
 
 import (
-	"github.com/gin-gonic/gin"
-	"github.com/go-playground/validator/v10"
-	"github.com/grzegorzmaniak/gothic/errors"
-	"go.uber.org/zap"
 	"io"
 	"net/http"
-	"sync"
+
+	"github.com/gin-gonic/gin"
+	"github.com/grzegorzmaniak/gothic/errors"
+	"go.uber.org/zap"
 )
-
-// CustomValidator is a global validator instance for struct validation. Im aware
-// that this is not the best practice, but for what we need, it is sufficient.
-var (
-	CustomValidator *validator.Validate
-	mu              sync.Mutex
-)
-
-// InitValidator sets the global validator instance to the one provided.
-func InitValidator(v *validator.Validate) {
-	mu.Lock()
-	defer mu.Unlock()
-	CustomValidator = v
-}
-
-// initDefaultValidator initializes the global validator with a default instance.
-func initDefaultValidator() {
-	InitValidator(validator.New())
-}
 
 // BindInput binds the input data from the request context to the provided struct.
 func BindInput[T any](ctx *gin.Context) (*T, *errors.AppError) {
