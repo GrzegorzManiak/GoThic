@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+
 	"github.com/gin-gonic/gin"
 	"github.com/grzegorzmaniak/gothic/cache"
 	"github.com/grzegorzmaniak/gothic/core"
@@ -26,11 +27,11 @@ func main() {
 	}
 
 	mySessionManager := &AppSessionManager{
-		SessionKeyValue:          sessionKey,
-		SessionAuthorizationData: &core.SessionAuthorizationData{CookieSecure: false},
-		CsrfCookieData:           &core.CsrfCookieData{Secure: false},
-		RbacManager:              &MyRbacManager{},
-		Cache:                    cache.BuildDefaultCacheManager(nil),
+		SessionKeyValue:                   sessionKey,
+		SessionAuthorizationConfiguration: &core.SessionAuthorizationConfiguration{CookieSecure: false},
+		CsrfCookieData:                    &core.CsrfCookieData{Secure: false},
+		RbacManager:                       &MyRbacManager{},
+		Cache:                             cache.BuildDefaultCacheManager(nil),
 	}
 
 	router := gin.Default()

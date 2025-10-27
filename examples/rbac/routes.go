@@ -2,10 +2,11 @@ package main
 
 import (
 	"fmt"
+	"time"
+
 	"github.com/grzegorzmaniak/gothic/core"
 	"github.com/grzegorzmaniak/gothic/errors"
 	"github.com/grzegorzmaniak/gothic/rbac"
-	"time"
 )
 
 // AppHandlerContext is a type alias for the specific instantiation of core.Handler
@@ -93,7 +94,7 @@ func BasicActionHandler(input *ExampleInput, data *AppHandlerContext) (*ExampleO
 		data.SessionManager,
 		"guest_session",
 		newSessionClaims,
-		&core.SessionAuthorizationData{
+		&core.SessionAuthorizationConfiguration{
 			Expiration: time.Minute * 5,
 			VerifyTime: time.Second * 30,
 		},

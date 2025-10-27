@@ -9,7 +9,7 @@ import (
 
 func applySessionCookie(
 	ctx *gin.Context,
-	authData *SessionAuthorizationData,
+	authData *SessionAuthorizationConfiguration,
 	value string,
 	maxAge int,
 ) {
@@ -36,7 +36,7 @@ func GetSessionCookie(
 		return "", fmt.Errorf("session manager is nil")
 	}
 
-	authorizationData := sessionManager.GetAuthorizationData()
+	authorizationData := sessionManager.GetAuthorizationConfiguration()
 	if authorizationData == nil {
 		return "", fmt.Errorf("authorization data is nil")
 	}
@@ -60,7 +60,7 @@ func SetSessionCookie(
 		return errors.NewInternalServerError("Session manager is nil", nil)
 	}
 
-	authorizationData := sessionManager.GetAuthorizationData()
+	authorizationData := sessionManager.GetAuthorizationConfiguration()
 	return SetCustomSessionCookie(ctx, sessionManager, group, claims, authorizationData)
 }
 
@@ -69,7 +69,7 @@ func SetCustomSessionCookie(
 	sessionManager SessionManager,
 	group string,
 	claims *SessionClaims,
-	authorizationData *SessionAuthorizationData,
+	authorizationData *SessionAuthorizationConfiguration,
 ) error {
 	if ctx == nil {
 		return errors.NewInternalServerError("Context is nil", nil)
@@ -122,7 +122,7 @@ func SetRefreshSessionCookie(
 		return errors.NewInternalServerError("Session manager is nil", nil)
 	}
 
-	authorizationData := sessionManager.GetAuthorizationData()
+	authorizationData := sessionManager.GetAuthorizationConfiguration()
 	return SetCustomRefreshSessionCookie(ctx, sessionManager, claims, header, authorizationData)
 }
 
@@ -131,7 +131,7 @@ func SetCustomRefreshSessionCookie(
 	sessionManager SessionManager,
 	claims *SessionClaims,
 	header *SessionHeader,
-	authorizationData *SessionAuthorizationData,
+	authorizationData *SessionAuthorizationConfiguration,
 ) error {
 	if ctx == nil {
 		return errors.NewInternalServerError("Context is nil", nil)
@@ -180,7 +180,7 @@ func ClearSessionCookie(
 		return errors.NewInternalServerError("Session manager is nil", nil)
 	}
 
-	authorizationData := sessionManager.GetAuthorizationData()
+	authorizationData := sessionManager.GetAuthorizationConfiguration()
 	if authorizationData == nil {
 		return errors.NewInternalServerError("Authorization data is nil", nil)
 	}

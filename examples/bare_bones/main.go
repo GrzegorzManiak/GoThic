@@ -25,10 +25,10 @@ func main() {
 	}
 
 	mySessionManager := &AppSessionManager{
-		SessionKeyValue:          sessionKey,
-		SessionAuthorizationData: &core.SessionAuthorizationData{CookieSecure: false},
-		CsrfCookieData:           &core.CsrfCookieData{Secure: false},
-		Cache:                    cache.BuildDefaultCacheManager(nil),
+		SessionKeyValue:                   sessionKey,
+		SessionAuthorizationConfiguration: &core.SessionAuthorizationConfiguration{CookieSecure: false},
+		CsrfCookieData:                    &core.CsrfCookieData{Secure: false},
+		Cache:                             cache.BuildDefaultCacheManager(nil),
 	}
 
 	router := gin.Default()

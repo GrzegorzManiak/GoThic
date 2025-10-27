@@ -2,6 +2,7 @@ package main // Or 'examples' if this is part of that demo package
 
 import (
 	"context"
+
 	"github.com/eko/gocache/lib/v4/cache"
 	gothicCache "github.com/grzegorzmaniak/gothic/cache"
 	"github.com/grzegorzmaniak/gothic/rbac"
@@ -15,11 +16,11 @@ type AppSessionManager struct {
 	core.DefaultSessionManager
 
 	// Configuration for this session manager instance.
-	SessionAuthorizationData *core.SessionAuthorizationData   // Holds the cookie settings.
-	CsrfCookieData           *core.CsrfCookieData             // Holds the CSRF settings.
-	SessionKeyValue          []byte                           // Holds the secret key for session operations.
-	RbacManager              *MyRbacManager                   // Holds the RBAC manager for this session manager.
-	Cache                    *gothicCache.DefaultCacheManager // Holds the cache for this session manager.
+	SessionAuthorizationConfiguration *core.SessionAuthorizationConfiguration // Holds the cookie settings.
+	CsrfCookieData                    *core.CsrfCookieData                    // Holds the CSRF settings.
+	SessionKeyValue                   []byte                                  // Holds the secret key for session operations.
+	RbacManager                       *MyRbacManager                          // Holds the RBAC manager for this session manager.
+	Cache                             *gothicCache.DefaultCacheManager        // Holds the cache for this session manager.
 }
 
 // GetCache returns the cache for this session manager.
@@ -42,10 +43,10 @@ func (m *AppSessionManager) StoreSession(ctx context.Context, claims *core.Sessi
 	return nil
 }
 
-// GetAuthorizationData returns the SessionAuthorizationData configuration for this session manager.
+// GetAuthorizationConfiguration returns the SessionAuthorizationConfiguration for this session manager.
 // This method is part of the core.SessionManager interface.
-func (m *AppSessionManager) GetAuthorizationData() *core.SessionAuthorizationData {
-	return m.SessionAuthorizationData
+func (m *AppSessionManager) GetAuthorizationConfiguration() *core.SessionAuthorizationConfiguration {
+	return m.SessionAuthorizationConfiguration
 }
 
 // GetSessionKey returns the session key used for cryptographic operations.

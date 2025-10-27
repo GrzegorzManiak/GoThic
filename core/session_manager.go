@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"fmt"
+
 	"github.com/eko/gocache/lib/v4/cache"
 	"github.com/grzegorzmaniak/gothic/rbac"
 )
@@ -21,8 +22,8 @@ const (
 
 type SessionManager interface {
 
-	// GetAuthorizationData Is used to get the cookie data for the session manager
-	GetAuthorizationData() *SessionAuthorizationData
+	// GetAuthorizationConfiguration Is used to get the cookie data for the session manager
+	GetAuthorizationConfiguration() *SessionAuthorizationConfiguration
 
 	// GetCsrfData Is used to get the CSRF data for the session manager
 	GetCsrfData() *CsrfCookieData

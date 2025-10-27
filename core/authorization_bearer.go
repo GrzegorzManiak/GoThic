@@ -23,7 +23,7 @@ func GetAuthorizationBearer(
 		return "", fmt.Errorf("session manager is nil")
 	}
 
-	authorizationData := sessionManager.GetAuthorizationData()
+	authorizationData := sessionManager.GetAuthorizationConfiguration()
 	if authorizationData == nil {
 		return "", fmt.Errorf("authorization data is nil")
 	}
@@ -46,7 +46,7 @@ func IssueBearerToken(
 	if sessionManager == nil {
 		return "", fmt.Errorf("session manager is nil")
 	}
-	authorizationData := sessionManager.GetAuthorizationData()
+	authorizationData := sessionManager.GetAuthorizationConfiguration()
 	return IssueCustomBearerToken(ctx, sessionManager, group, claims, authorizationData)
 }
 
@@ -55,7 +55,7 @@ func IssueCustomBearerToken(
 	sessionManager SessionManager,
 	group string,
 	claims *SessionClaims,
-	authorizationData *SessionAuthorizationData,
+	authorizationData *SessionAuthorizationConfiguration,
 ) (string, error) {
 	if ctx == nil {
 		return "", fmt.Errorf("context is nil")

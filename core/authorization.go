@@ -40,7 +40,7 @@ const (
 	SessionModeClaimMaximumSize = 32
 )
 
-type SessionAuthorizationData struct {
+type SessionAuthorizationConfiguration struct {
 	CookieName              string
 	CookiePath              string
 	CookieDomain            string
@@ -96,7 +96,7 @@ func ensureBasicClaims(group string, claims *SessionClaims, sessionManager Sessi
 func CreateAuthorization(
 	group string,
 	authorizationHeader *SessionHeader,
-	authorizationData SessionAuthorizationData,
+	authorizationData SessionAuthorizationConfiguration,
 	claims *SessionClaims,
 	sessionManager SessionManager,
 ) (string, error) {
@@ -159,7 +159,7 @@ func CreateAuthorization(
 
 // CreateRefreshAuthorization generates a new token for an existing session, preserving its original expiration time.
 func CreateRefreshAuthorization(
-	authorizationData SessionAuthorizationData,
+	authorizationData SessionAuthorizationConfiguration,
 	claims *SessionClaims,
 	oldSessionHeader *SessionHeader,
 	sessionManager SessionManager,

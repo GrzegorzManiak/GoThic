@@ -16,7 +16,7 @@ const (
 )
 
 func extractSessionAuthorizationParts(
-	AuthorizationData *SessionAuthorizationData,
+	AuthorizationData *SessionAuthorizationConfiguration,
 	sessionManager SessionManager,
 	authorizationValue string,
 ) (header string, payload string, err error) {
@@ -88,7 +88,7 @@ func extractSessionAuthorizationParts(
 }
 
 func extractSession(ctx *gin.Context, sessionManager SessionManager) (*SessionHeader, *SessionClaims, string, string, error) {
-	authorizationData := sessionManager.GetAuthorizationData()
+	authorizationData := sessionManager.GetAuthorizationConfiguration()
 	if authorizationData == nil {
 		return nil, nil, "", SourceNone, fmt.Errorf("authorization data is not configured")
 	}
