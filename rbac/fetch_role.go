@@ -70,7 +70,7 @@ func GetRolePermissions(
 		}
 
 		// Set only errors on marshaling errors, it wont fail on setting cache
-		if cacheErr := CacheRolePermissions(ctx, roleIdentifier, cacheInstance, sourcePerms, rbacManager.GetSubjectRolesCacheTtl()); cacheErr != nil {
+		if cacheErr := CacheRolePermissions(ctx, roleIdentifier, cacheInstance, sourcePerms, rbacManager.GetRolePermissionsCacheTtl()); cacheErr != nil {
 			return cacheErr, nil
 		}
 

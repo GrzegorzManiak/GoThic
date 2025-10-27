@@ -110,25 +110,24 @@ func TestFetchFromCache(t *testing.T) {
 	}
 }
 
-func TestGetNilOrInvalidUnmarshalFunction(t *testing.T) {
+func TestFetchNilOrInvalidUnmarshalFunction(t *testing.T) {
 	ctx := context.Background()
 	mockCacheInstance := &mockCache{
-		data: make(map[string][]byte),
+		data: map[string][]byte{"test": []byte(`{"Name":"test","Value":42}`)},
 	}
-
-	t.Run("Nil marshal function returns error", func(t *testing.T) {
-		err := setInCache(ctx, mockCacheInstance, "test", testStruct{Name: "test", Value: 1}, time.Minute, nil)
+	t.Run("Nil unmarshal function returns error", func(t *testing.T) {
+		_, _, err := fetchFromCache[string](ctx, mockCacheInstance, "test", nil)
 		if err == nil {
-			t.Errorf("Expected error for nil marshal function, got nil")
+			t.Errorf("Expected error for nil unmarshal function, got nil")
 		}
 	})
 
-	t.Run("Marshal function returns error", func(t *testing.T) {
-		err := setInCache(ctx, mockCacheInstance, "test", testStruct{Name: "test", Value: 1}, time.Minute, func(v testStruct) ([]byte, error) {
-			return nil, errors.New("marshal error")
+	t.Run("Unmarshal function returns error", func(t *testing.T) {
+		_, _, err := fetchFromCache(ctx, mockCacheInstance, "test", func(b []byte) (testStruct, error) {
+			return testStruct{}, errors.New("unmarshal error")
 		})
 		if err == nil {
-			t.Errorf("Expected error for marshal function failure, got nil")
+			t.Errorf("Expected error for unmarshal function failure, got nil")
 		}
 	})
 }

@@ -348,6 +348,21 @@ func TestPermissionSerializeDeserialize(t *testing.T) {
 		}
 	})
 
+	t.Run("Deserialize empty string", func(t *testing.T) {
+		// Empty string decodes to empty byte slice, which should create zero permission
+		perm, err := DeserializePermission("")
+		if err != nil {
+			t.Fatalf("Expected no error for empty string, got %v", err)
+		}
+		if perm == nil {
+			t.Fatal("Expected non-nil permission")
+		}
+		expected := big.NewInt(0)
+		if (*big.Int)(perm).Cmp(expected) != 0 {
+			t.Errorf("Expected zero permission, got %s", (*big.Int)(perm).String())
+		}
+	})
+
 	t.Run("Serialize nil permission returns empty string", func(t *testing.T) {
 		var perm *Permission
 		serialized := perm.Serialize()
