@@ -1,10 +1,11 @@
 package helpers
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 	"github.com/grzegorzmaniak/gothic/errors"
 	"go.uber.org/zap"
-	"net/http"
 )
 
 // ErrorResponse sends a JSON error response to the client.
