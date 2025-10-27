@@ -3,11 +3,12 @@ package core
 import (
 	"encoding/binary"
 	"fmt"
+	"time"
+
 	"github.com/eko/gocache/lib/v4/store"
 	"github.com/gin-gonic/gin"
 	"github.com/grzegorzmaniak/gothic/errors"
 	"github.com/grzegorzmaniak/gothic/helpers"
-	"time"
 )
 
 func GetAuthorizationBearer(
@@ -137,7 +138,12 @@ func BearerNeedsValidation(
 	}
 
 	// - Read the 8-byte slice directly into an uint64
-	return cacheKey, binary.BigEndian.Uint64(cachedValue) < uint64(time.Now().Unix()), nil
+	currentTime := time.Now().Unix()
+	// Check for overflow when converting int64 to uint64
+	if currentTime < 0 {
+		return cacheKey, true, fmt.Errorf("invalid current time: negative Unix timestamp")
+	}
+	return cacheKey, binary.BigEndian.Uint64(cachedValue) < uint64(currentTime), nil
 }
 
 // BearerSetCache sets the cache for the session token.
@@ -171,6 +177,11 @@ func BearerSetCache(
 	// - Calculate the refresh timestamp.
 	refreshPeriod := time.Duration(header.RefreshPeriodSec) * time.Second
 	refreshTime := time.Now().Add(refreshPeriod).Unix()
+
+	// Check for overflow when converting int64 to uint64
+	if refreshTime < 0 {
+		return fmt.Errorf("invalid refresh time: negative Unix timestamp")
+	}
 
 	// - Create an 8-byte slice to hold the binary representation of the timestamp.
 	b := make([]byte, 8)

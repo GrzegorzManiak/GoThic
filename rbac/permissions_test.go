@@ -35,6 +35,13 @@ func TestNewPermission(t *testing.T) {
 			t.Errorf("Expected large permission to be set correctly")
 		}
 	})
+
+	t.Run("Create permission with negative bit", func(t *testing.T) {
+		perm := NewPermission(-1)
+		if perm != nil {
+			t.Error("Expected nil permission for negative bit")
+		}
+	})
 }
 
 func TestPermissionSetUnset(t *testing.T) {

@@ -53,7 +53,7 @@ type DefaultCacheManager struct {
 func (m *DefaultCacheManager) GetCache() (cache.CacheInterface[[]byte], error) {
 	m.CacheInitOnce.Do(func() {
 		// BuildDefaultCacheManager sets reasonable defaults, so we can assume CacheConfig is always non-nil here.
-		// But, just in case, I will still default the values if they are zero.
+		// But, just in case, I will still default the values.
 		ristrettoClient, err := ristretto.NewCache(&ristretto.Config{
 			NumCounters: helpers.DefaultInt64(m.CacheConfig.RistrettoNumCounters, DefaultRistrettoNumCounters),
 			MaxCost:     helpers.DefaultInt64(m.CacheConfig.RistrettoMaxCost, DefaultRistrettoMaxCost),

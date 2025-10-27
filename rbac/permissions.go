@@ -9,9 +9,12 @@ import (
 // Permission represents a set of permissions using a bitmask
 type Permission big.Int
 
-func NewPermission(permission uint64) *Permission {
+func NewPermission(permission int) *Permission {
+	if permission < 0 {
+		return nil
+	}
 	b := big.NewInt(0)
-	b.SetBit(b, int(permission), 1)
+	b.SetBit(b, permission, 1)
 	return (*Permission)(b)
 }
 
