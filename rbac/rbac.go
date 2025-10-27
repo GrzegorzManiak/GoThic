@@ -2,10 +2,11 @@ package rbac
 
 import (
 	"context"
+	"time"
+
 	"github.com/eko/gocache/lib/v4/cache"
 	internalcache "github.com/grzegorzmaniak/gothic/cache"
 	"github.com/grzegorzmaniak/gothic/helpers"
-	"time"
 )
 
 const (
@@ -17,6 +18,8 @@ const (
 	RolePermissionsCacheKeyPrefix    = "role_perms:"    // Key: role_perms:<roleIdentifier>
 	SubjectRolesCacheKeyPrefix       = "subject_roles:" // Key: subject_roles:<subjectIdentifier>
 	SubjectPermissionsCacheKeyPrefix = "subject_perms:" // Key: subject_perms:<subjectIdentifier>
+	SubjectSingleFlightKeyPrefix     = "subject_sf:"    // Key: subject_sf:<subjectIdentifier>
+	RoleSingleFlightKeyPrefix        = "role_sf:"       // Key: role_sf:<roleIdentifier>
 )
 
 type RouteRbacPolicy uint16
@@ -39,10 +42,10 @@ const (
 
 type Manager interface {
 	// GetSubjectRolesAndPermissions gets the permissions and roles for a specific subject.
-	GetSubjectRolesAndPermissions(ctx context.Context, subjectIdentifier string) (permissions *Permissions, roles *[]string, err error)
+	GetSubjectRolesAndPermissions(ctx context.Context, subjectIdentifier string) (Permissions, []string, error)
 
 	// GetRolePermissions gets all the permissions associated with a specific role.
-	GetRolePermissions(ctx context.Context, roleIdentifier string) (*Permissions, error)
+	GetRolePermissions(ctx context.Context, roleIdentifier string) (Permissions, error)
 
 	// GetCache returns a configured gocache CacheInterface instance.
 	// This cache is used internally by the Manager for optimizing RBAC data retrieval (e.g., caching role-permission mappings or subject roles)
@@ -50,6 +53,9 @@ type Manager interface {
 
 	// GetSubjectPermissionsCacheTtl returns the TTL for subject-specific permission entries in the cache.
 	GetSubjectPermissionsCacheTtl() time.Duration
+
+	// GetSubjectRolesCacheTtl returns the TTL for subject-specific role entries in the cache.
+	GetSubjectRolesCacheTtl() time.Duration
 
 	// GetRolePermissionsCacheTtl returns the TTL for role-specific permission entries in the cache.
 	GetRolePermissionsCacheTtl() time.Duration
@@ -60,6 +66,9 @@ type DefaultRBACManagerConfig struct {
 
 	// UserPermissionsCacheTTL is the Time-To-Live for user-specific permission entries in the cache.
 	UserPermissionsCacheTTL time.Duration
+
+	// UserRolesCacheTTL is the Time-To-Live for user-specific role entries in the cache.
+	UserRolesCacheTTL time.Duration
 
 	// RolePermissionsCacheTTL is the Time-To-Live for role-specific permission entries in the cache.
 	RolePermissionsCacheTTL time.Duration
@@ -74,6 +83,10 @@ type DefaultRBACManager struct {
 
 func (m *DefaultRBACManager) GetSubjectPermissionsCacheTtl() time.Duration {
 	return helpers.DefaultTimeDuration(m.UserPermissionsCacheTTL, DefaultSubjectPermissionsCacheTTL)
+}
+
+func (m *DefaultRBACManager) GetSubjectRolesCacheTtl() time.Duration {
+	return helpers.DefaultTimeDuration(m.UserRolesCacheTTL, DefaultSubjectPermissionsCacheTTL)
 }
 
 func (m *DefaultRBACManager) GetRolePermissionsCacheTtl() time.Duration {

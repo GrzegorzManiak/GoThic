@@ -2,14 +2,15 @@ package cache
 
 import (
 	"fmt"
+	"sync"
+	"time"
+
 	"github.com/dgraph-io/ristretto"
 	"github.com/eko/gocache/lib/v4/cache"
 	"github.com/eko/gocache/lib/v4/store"
 	ristrettoStore "github.com/eko/gocache/store/ristretto/v4"
 	"github.com/grzegorzmaniak/gothic/helpers"
 	"go.uber.org/zap"
-	"sync"
-	"time"
 )
 
 const (
@@ -51,6 +52,8 @@ type DefaultCacheManager struct {
 
 func (m *DefaultCacheManager) GetCache() (cache.CacheInterface[[]byte], error) {
 	m.CacheInitOnce.Do(func() {
+		// BuildDefaultCacheManager sets reasonable defaults, so we can assume CacheConfig is always non-nil here.
+		// But, just in case, I will still default the values if they are zero.
 		ristrettoClient, err := ristretto.NewCache(&ristretto.Config{
 			NumCounters: helpers.DefaultInt64(m.CacheConfig.RistrettoNumCounters, DefaultRistrettoNumCounters),
 			MaxCost:     helpers.DefaultInt64(m.CacheConfig.RistrettoMaxCost, DefaultRistrettoMaxCost),
@@ -90,7 +93,12 @@ func (m *DefaultCacheManager) GetCache() (cache.CacheInterface[[]byte], error) {
 
 func BuildDefaultCacheManager(config *DefaultCacheConfig) *DefaultCacheManager {
 	if config == nil {
-		config = &DefaultCacheConfig{}
+		config = &DefaultCacheConfig{
+			RistrettoNumCounters:                      DefaultRistrettoNumCounters,
+			RistrettoBufferItems:                      DefaultRistrettoBufferItems,
+			RistrettoMaxCost:                          DefaultRistrettoMaxCost,
+			DefaultStoreExpirationForRistrettoAdapter: DefaultStoreExpirationForRistrettoAdapter,
+		}
 	}
 
 	return &DefaultCacheManager{

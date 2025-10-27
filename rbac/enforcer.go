@@ -64,7 +64,7 @@ func mergeRolePermissions(ctx context.Context, subjectRoles []string, rbacManage
 		}
 
 		if rolePerms != nil {
-			mergedPermissions = append(mergedPermissions, *rolePerms...)
+			mergedPermissions = append(mergedPermissions, rolePerms...)
 		}
 	}
 	return mergedPermissions.Flatten(), nil
@@ -82,15 +82,15 @@ func CheckPermissions(
 	policy RouteRbacPolicy,
 ) (bool, error) {
 
-	// - If no permissions or roles are required, access is granted.
-	if len(requiredRoles) == 0 && requiredPermissions == nil {
-		return true, nil
-	}
-
 	// - Fetch subject's roles and direct permissions
 	subjectPermissions, subjectRoles, err := FetchSubjectRolesAndPermissions(ctx, subjectIdentifier, rbacCacheId, rbacManager)
 	if err != nil {
 		return false, fmt.Errorf("failed to fetch subject roles/permissions for '%s': %w", subjectIdentifier, err)
+	}
+
+	// - If no permissions or roles are required, access is granted.
+	if len(requiredRoles) == 0 && requiredPermissions == nil {
+		return true, nil
 	}
 
 	if subjectPermissions == nil {
@@ -98,11 +98,11 @@ func CheckPermissions(
 	}
 
 	if subjectRoles == nil {
-		subjectRoles = &[]string{}
+		subjectRoles = []string{}
 	}
 
 	// - Check roles
-	hasRole := roleCheck(*subjectRoles, requiredRoles, policy)
+	hasRole := roleCheck(subjectRoles, requiredRoles, policy)
 	switch policy {
 	case PermissionsOrRole, PermissionsOrAllRoles:
 		if hasRole {
@@ -127,7 +127,7 @@ func CheckPermissions(
 	}
 
 	// - 2. If no direct permissions, merge permissions from all of the subject's roles.
-	merged, err := mergeRolePermissions(ctx, *subjectRoles, rbacManager)
+	merged, err := mergeRolePermissions(ctx, subjectRoles, rbacManager)
 	if err != nil {
 		return false, err
 	}

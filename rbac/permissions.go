@@ -91,6 +91,10 @@ type Permissions []*Permission
 func (ps Permissions) Flatten() *Permission {
 	result := new(big.Int)
 	for _, p := range ps {
+		if p == nil {
+			// Skip nil permissions, they don't contribute to the final bitmask
+			continue
+		}
 		result.Or(result, (*big.Int)(p))
 	}
 	return (*Permission)(result)

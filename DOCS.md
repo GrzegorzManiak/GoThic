@@ -27,7 +27,7 @@ Implements the synchronized token pattern (or double submit cookie) for CSRF pro
 ### 2.3. RBAC (Role-Based Access Control)
 Provides a flexible RBAC system to control access to resources based on user roles and permissions.
 
-* *Permissions**: Defined as an action (e.g., read, create) on a resource (e.g., "article", "user_profile").
+* Permissions**: Defined as an action (e.g., read, create) on a resource (e.g., "article", "user_profile").
 * **Roles**: Collections of permissions.
 * **Checking Logic**: Access is granted if:
     * The route requires no specific permissions or roles.

@@ -3,9 +3,11 @@ package rbac
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/eko/gocache/lib/v4/cache"
 	"github.com/eko/gocache/lib/v4/store"
-	"time"
+	"go.uber.org/zap"
 )
 
 func fetchFromCache[T any](
@@ -15,6 +17,12 @@ func fetchFromCache[T any](
 	unmarshal func([]byte) (T, error),
 ) (T, bool, error) {
 	var zero T
+	if cache == nil {
+		return zero, false, nil
+	}
+	if unmarshal == nil {
+		return zero, false, fmt.Errorf("cache: unmarshal function is nil for key '%s'", key)
+	}
 	val, err := cache.Get(ctx, key)
 	if err != nil {
 		// - cache miss is not an error
@@ -35,12 +43,19 @@ func setInCache[T any](
 	ttl time.Duration,
 	marshal func(T) ([]byte, error),
 ) error {
+	if cache == nil {
+		return nil
+	}
+	if marshal == nil {
+		return fmt.Errorf("cache: marshal function is nil for key '%s'", key)
+	}
 	str, err := marshal(value)
 	if err != nil {
 		return fmt.Errorf("cache: failed to marshal key '%s': %w", key, err)
 	}
 	if err := cache.Set(ctx, key, str, store.WithExpiration(ttl)); err != nil {
-		return fmt.Errorf("cache: failed to set key '%s': %w", key, err)
+		// Log the error but do not return it to avoid breaking the main flow
+		zap.L().Warn("Failed to set value in cache", zap.String("key", key), zap.Error(err))
 	}
 	return nil
 }
