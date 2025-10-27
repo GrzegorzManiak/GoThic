@@ -3,6 +3,7 @@ package rbac
 import (
 	"context"
 	"fmt"
+
 	"go.uber.org/zap"
 )
 
@@ -40,6 +41,9 @@ func roleCheck(subjectRoles []string, routeRolesList map[string]bool, routeRbacP
 				return false
 			}
 		}
+
+		// - All required roles are found in the subject's roles, access is granted.
+		return true
 
 	default:
 		zap.L().Warn("Unknown RBAC policy", zap.Int("policy", int(routeRbacPolicy)))

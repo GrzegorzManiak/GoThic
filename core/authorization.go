@@ -35,6 +35,9 @@ const (
 	SessionAuthorizationVersion     = "SG1"
 	MaximumAuthorizationVersionSize = 32
 	MinimumAuthorizationVersionSize = 1
+
+	SessionModeClaimMinimumSize = 1
+	SessionModeClaimMaximumSize = 32
 )
 
 type SessionAuthorizationData struct {
@@ -60,6 +63,9 @@ func ensureBasicClaims(group string, claims *SessionClaims, sessionManager Sessi
 		return errors.NewInternalServerError("Session manager is nil", nil)
 	}
 
+	if len(group) < SessionModeClaimMinimumSize || len(group) > SessionModeClaimMaximumSize {
+		return fmt.Errorf("session mode claim must be between %d and %d characters", SessionModeClaimMinimumSize, SessionModeClaimMaximumSize)
+	}
 	claims.SetIfNotSet(SessionModeClaim, group)
 
 	newCsrfToken, err := helpers.GenerateID(helpers.AESKeySize32)
