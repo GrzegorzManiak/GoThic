@@ -433,7 +433,7 @@ func TestOutputDataEdgeCases(t *testing.T) {
 		type mixedOutput struct {
 			Data       string `json:"data" validate:"required"`
 			HeaderStr  string `header:"X-String"`
-			NotAHeader int    `json:"number"`
+			NotAHeader int    `header:"number"`
 		}
 
 		InitValidator(validator.New())
