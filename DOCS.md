@@ -1,258 +1,281 @@
-# GOTHIC Technical Documentation
+# GoThic Technical Documentation
 
-## 1. Introduction
-
-GOTHIC is a Go library designed to provide robust session management, CSRF (Cross-Site Request Forgery) protection, and RBAC (Role-Based Access Control) for web applications, particularly those built with frameworks like Gin. It focuses on security, extensibility, and a clear request processing lifecycle.
+This document provides a concise overview of GoThic's modules and their responsibilities. For installation and a minimal quick start, see GETTING_STARTED.md. For implementation details and design rationale refer to DOCS.md (this file) and the code comments. For testing guidance see TESTING.md.
 
 ---
 
-## 2. Core Concepts
+## Project overview
 
-GOTHIC is built around several core concepts that work together to secure and manage application routes.
-
-### 2.1. Session Management
-Securely manages user sessions using encrypted cookies. It handles session creation, validation, refresh, and provides a mechanism to associate custom data (claims) with a session.
-
-* **Session Cookies**: Encrypted cookies store session data, including a header with metadata (like expiration and refresh times) and a payload with session claims. Session cookies are structured with a version, key ID, and the encrypted, base64-encoded payload.
-* **Session Claims**: Arbitrary key-value pairs can be stored within a session, allowing for flexible data association with users. Special claims like `___session_mode`, `___rbac_id`, `___csrf_token_tie`, and `___version` are used internally.
-* **Session Lifecycle**: Sessions can expire and have a separate refresh period. GOTHIC can automatically refresh sessions if they are valid but due for a refresh.
-
-### 2.2. CSRF Protection
-Implements the synchronized token pattern (or double submit cookie) for CSRF protection.
-
-* **CSRF Tokens**: A CSRF token is generated and stored in a cookie, and also sent in a custom HTTP header (e.g., `X-CSRF-Token`).
-* **Token Tying**: For authenticated sessions, CSRF tokens are "tied" to the session via a claim (`___csrf_token_tie`). This ensures that a CSRF token issued to an anonymous session cannot be used with an authenticated session.
-* **CSRF Lifecycle**: CSRF tokens also have expiration and refresh times.
-
-### 2.3. RBAC (Role-Based Access Control)
-Provides a flexible RBAC system to control access to resources based on user roles and permissions.
-
-* Permissions**: Defined as an action (e.g., read, create) on a resource (e.g., "article", "user_profile").
-* **Roles**: Collections of permissions.
-* **Checking Logic**: Access is granted if:
-    * The route requires no specific permissions or roles.
-    * The subject is a member of any of the roles explicitly required by the API configuration.
-    * The subject directly possesses all permissions required by the API configuration.
-    * The combined set of permissions (direct and from all assigned roles) satisfies all permissions required by the API configuration.
-* **Caching**: RBAC data (subject permissions, subject roles, role permissions) can be cached to improve performance.
-
-### 2.4. Request Lifecycle and Execution
-GOTHIC defines a structured way to handle incoming HTTP requests through its `ExecuteRoute` function. This function orchestrates session handling, CSRF validation, RBAC checks, input processing, business logic execution, and response generation.
+GoThic is a low-level Go toolkit that offers primitives for secure session management, CSRF protection, and role-based access control (RBAC). It is intended as a foundation that apps can integrate and extend rather than a turnkey framework.
 
 ---
 
-## 3. Key Components
+## Module: core
 
-### 3.1. `SessionManager` Interface
-This is the central piece for customizing session behavior. Implementations must provide methods for:
-* Retrieving cookie and CSRF configurations (`GetCookieData`, `GetCsrfData`).
-* Managing session encryption keys (`GetSessionKey`, `GetOldSessionKey`).
-* Fetching the user/subject associated with a session (`FetchSubject`).
-* Verifying session validity beyond basic decoding (e.g., checking against a session store) (`VerifySession`).
-* Storing session information, if necessary (`StoreSession`).
-* Verifying session claims against route-specific configurations (`VerifyClaims`).
-* Providing an RBAC manager (`GetRbacManager`).
-* Getting a unique identifier for a subject from its claims (`GetSubjectIdentifier`).
+Purpose: Orchestrates request handling, session lifecycle, CSRF interactions and ties together session managers, route configuration and handler execution.
 
-A `DefaultSessionManager` is provided, which offers a basic implementation for `VerifyClaims` and `GetRbacManager`.
+Key concepts and types:
+- SessionHeader: Encodes session metadata (issued at, lifetime, refresh period) and provides Encode/Decode, IsExpired, NeedsRefresh, IsValid helpers.
+- SessionClaims: Map-based claims storage with helpers for Get/Set/SetIfNotSet, EncodePayload/DecodePayload.
+- SessionManager interface: Pluggable contract for session key management, verification, storage, subject fetching and RBAC integration. DefaultSessionManager provides a minimal VerifyClaims implementation.
+- APIConfiguration & Handler: Route-level configuration (Allow/Block, Permissions, Roles, SessionRequired, RequireCsrf, etc.) and the context passed to handlers.
 
-### 3.2. `APIConfiguration` Struct
-This struct defines the security and behavior requirements for a specific route:
-* `Allow`, `Block`: Lists of allowed or blocked session types (e.g., "default", "admin").
-* `Permissions`, `Roles`: RBAC permissions or roles required for the route.
-* `SessionRequired`: Boolean indicating if a session is mandatory (defaults to true).
-* `ManualResponse`: Boolean indicating if the handler will manually send the HTTP response (defaults to false).
-* `FetchSubject`: Boolean indicating if the subject/user associated with the session should be fetched (defaults to false).
-* `RequireCsrf`: Boolean indicating if CSRF protection is enforced for this route (defaults to true).
+Where to look: core/*.go (handler.go, session_header.go, session_claims.go, session_manager.go, executor and authorization helpers)
 
-### 3.3. `Handler` Struct
-Passed to the business logic function for a route. It encapsulates all relevant request and session context:
-* `BaseRoute`: Application-specific base route components (e.g., database connections).
-* `Subject`: The fetched user/subject, if `FetchSubject` was true.
-* `Context`: The Gin context (`*gin.Context`).
-* `SubjectFetched`: Boolean indicating if the subject was successfully fetched.
-* `Claims`: The `SessionClaims` for the current session.
-* `SessionGroup`: The group/mode of the current session.
-* `SessionHeader`: The `SessionHeader` of the current session.
-* `CsrfToken`: The `CompleteCsrfToken` for the request.
-* `HasSession`: Boolean indicating if a valid session exists.
-* `SessionManager`: The active `SessionManager` instance.
+Code example (SessionHeader / SessionClaims):
 
-### 3.4. `SessionHeader` and `SessionClaims`
-* `SessionHeader`: Contains metadata about the session cookie, such as its group, expiration time (`ExpiresAt`), and refresh time (`RefreshAt`). It can be encoded to/decoded from a base64 string.
-* `SessionClaims`: A map (`map[string]string`) to store arbitrary data related to the session. It includes a `HasSession` flag that explicitly indicates if the claims represent a valid session. Provides methods to get, set, and check for claims, and to encode/decode the claims payload to/from a base64 string.
+```go
+// Create a header and encode it to a base64 string
+hdr := core.NewSessionHeader(false, 30*time.Minute, 10*time.Minute)
+encoded, err := hdr.Encode()
+if err != nil {
+    // handle error
+}
 
-### 3.5. `CompleteCsrfToken` and `CsrfHeader`
-* `CsrfHeader`: Contains metadata for the CSRF token, specifically its expiration (`ExpiresAt`) and refresh (`RefreshAt`) times.
-* `CompleteCsrfToken`: Embeds `CsrfHeader` and adds the actual `Token` string, the `Tie` (linking it to a session), the token `Version`, and a boolean `Tied` indicating if it's tied to an authenticated session.
+// Decode back from string
+decoded, err := core.Decode(encoded)
+if err != nil {
+    // handle error
+}
+
+// Work with claims
+claims := &core.SessionClaims{}
+claims.SetClaim("user_id", "123")
+if v, ok := claims.GetClaim("user_id"); ok {
+    _ = v // use user id
+}
+
+// VerifyClaims using DefaultSessionManager
+mgr := &core.DefaultSessionManager{}
+ok, err := mgr.VerifyClaims(context.Background(), claims, &core.APIConfiguration{Allow: []string{"default"}})
+_ = ok; _ = err
+```
 
 ---
 
-## 4. Workflow: The Request Lifecycle via `ExecuteRoute`
+## Module: cache
 
-The `ExecuteRoute` function in `core/executor.go` is the heart of GOTHIC's request processing. It follows a multi-stage process:
+Purpose: Lightweight cache wrappers used by RBAC and optional session caching. Provides basic get/set/ttl semantics used by other modules for performance.
 
-1.  **Establish Session Context (`_establishSessionContext`)**:
-    * **Extract Session**: Attempts to extract session information (header, claims, group) from cookies using `extractSession`.
-        * If `SessionRequired` is true and extraction fails, an unauthorized error is returned.
-    * **Extract CSRF Token**: Attempts to extract the CSRF token from the header and cookie using `extractCsrf`.
-        * If extraction fails, a new anonymous CSRF token might be set. If `RequireCsrf` is true, an unauthorized error is returned.
-    * **Validate Session Header**: If a session header exists, it's validated for expiration and integrity. If `SessionRequired` is true and the header is invalid, an unauthorized error occurs. If not required, the session context is cleared.
-    * **Refresh Session**: If the session header is valid and needs refreshing, `SetRefreshCookie` is called.
-    * **Verify Claims**: The `SessionManager.VerifyClaims` method is called to check if the session's claims are permissible according to `APIConfiguration` (Allow/Block lists).
-        * If `SessionRequired` is true and verification fails, an unauthorized error is returned.
-        * If `SessionRequired` is false, but an *existing* optional session fails verification, the session context is cleared.
-    * **Validate CSRF Token (`validateCsrf`)**:
-        * Checks if the CSRF token itself is valid (not expired).
-        * If the session is authenticated (`claims != nil && claims.HasSession`), it verifies that the CSRF token is tied (`csrfToken.Tied`) and that its `Tie` value matches the `CsrfTokenTie` claim in the session. An untied CSRF token with an authenticated session is rejected.
-        * If the CSRF token needs refreshing, `AutoSetCsrfCookie` is called.
-        * If `RequireCsrf` is true and any CSRF validation fails, an unauthorized error is returned.
+Where to look: cache/cache.go
 
-2.  **Process RBAC (`processRbac`)**:
-    * If `APIConfiguration.Roles` or `APIConfiguration.Permissions` are defined and claims exist:
-        * Retrieves the RBAC manager from the `SessionManager`. If not available, an internal server error occurs.
-        * Retrieves the `RbacCacheIdentifier` from claims. If missing or invalid, an internal server error occurs.
-        * Calls `rbac.CheckPermissions` to validate if the subject meets the required roles/permissions.
-        * If the check fails, an unauthorized error is returned.
+Code example (basic cache usage):
 
-3.  **Prepare Handler Data (`prepareHandlerData`)**:
-    * **Input Validation**: Binds and validates request data (headers, query parameters, JSON body) into a user-defined input struct using `validation.InputData`. If validation fails, a validation error is returned.
-    * **Fetch Subject**: If `APIConfiguration.FetchSubject` is true and a valid session with claims exists, `SessionManager.FetchSubject` is called to retrieve the user/subject data. If fetching fails, an internal server error is returned.
-
-4.  **Execute Business Logic Handler**:
-    * The application-specific handler function is called with the validated input and the `Handler` struct, which contains all context (session, CSRF, subject, etc.).
-    * The handler returns an output struct and an optional `*errors.AppError`. If an error is returned, it's sent to the client via `helpers.ErrorResponse`.
-
-5.  **Process Handler Output and Send Response (`processAndSendHandlerOutput`)**:
-    * If `APIConfiguration.ManualResponse` is true, GOTHIC does nothing further with the response.
-    * Otherwise, the output from the handler is validated using `validation.OutputData`. This also extracts any response headers defined via struct tags in the output struct. If validation fails, a validation error is returned.
-    * If successful, `helpers.SuccessResponse` sends a JSON response to the client.
+```go
+// Obtain a cache instance from a SessionManager or rbac.Manager implementation
+c, _ := mySessionManager.GetCache()
+_ = c.Set(context.Background(), "key", []byte("value"), 5*time.Minute)
+val, err := c.Get(context.Background(), "key")
+_ = val; _ = err
+```
 
 ---
 
-## 5. Security Mechanisms
+## Module: errors
 
-### 5.1. Cookie Encryption and Structure
+Purpose: Standardized application error representation and helpers to construct common HTTP error responses.
 
-* **Session Cookies**:
-    * **Structure**: `Version Delimiter KeyID Delimiter Base64(AES-GCM(Header Delimiter Payload))`.
-        * `Version`: Version of the session cookie format (e.g., "SG1").
-        * `KeyID`: Identifier for the encryption key used.
-        * `Header`: JSON marshaled `SessionHeader` (group, expiresAt, refreshAt), then base64 encoded.
-        * `Payload`: JSON marshaled `SessionClaims`, then base64 encoded.
-    * **Encryption**: The combined `Header Delimiter Payload` string is encrypted using AES-GCM. The `KeyID` and `Version` are used as associated data (AD) for the encryption, ensuring that the cookie cannot be decrypted with a different key ID or interpreted under a different version even if the raw ciphertext is the same. The encryption key is retrieved via `SessionManager.GetSessionKey()` or `GetOldSessionKey(keyId)`.
+Key concepts:
+- AppError: Structured error with Code, Message, Err (underlying error) and Details. Methods: Error(), Unwrap(), ToJSONResponse(production bool).
+- Convenience constructors: NewBadRequest, NewUnauthorized, NewForbidden, NewNotFound, NewConflict, NewInternalServerError, NewValidationFailed.
 
-* **CSRF Cookies**:
-    * **Structure**: `Version Delimiter KeyID Delimiter Base64(AES-GCM(CompleteCsrfToken))`.
-        * `Version`: Version of the CSRF cookie format (e.g., "CG1").
-        * `KeyID`: Identifier for the encryption key used.
-        * `CompleteCsrfToken`: JSON marshaled `CompleteCsrfToken` struct (includes `CsrfHeader`, `Token`, `Tie`, `Version`, `Tied`).
-    * **Encryption**: The JSON marshaled `CompleteCsrfToken` is encrypted using AES-GCM. The `KeyID` and `Version` are used as associated data.
+Where to look: errors/*.go
 
-### 5.2. CSRF Token Generation and Validation Flow
+Code example (constructing and formatting errors):
 
-1.  **Generation (`CreateCsrfToken`, `AutoSetCsrfCookie`)**:
-    * A random token string is generated.
-    * A `CompleteCsrfToken` struct is populated with the token, version, tied status (based on whether `csrfTie` is provided), and a new `CsrfHeader` (with expiration/refresh times).
-    * This struct is JSON marshaled and then encrypted using AES-GCM with a key from `SessionManager.GetSessionKey()`. The key ID and token version are used as associated data.
-    * The final string (version, key ID, encrypted token) is set as a cookie.
-    * `AutoSetCsrfCookie` handles whether to generate a tied token (if claims are provided) or an anonymous one (if claims are nil).
+```go
+// In handlers you typically return an *errors.AppError to the framework
+// (see examples/bare_bones/routes.go for complete handler examples):
+return nil, errors.NewInternalServerError("Failed to issue session cookie", err)
 
-2.  **Extraction (`extractCsrfParts`, `extractCsrf`)**:
-    * The CSRF token value is read from the `X-CSRF-Token` header (or configured name) and the corresponding cookie. They must match.
-    * The cookie string is parsed to get the version, key ID, and encrypted payload.
-    * The appropriate decryption key is fetched using `SessionManager.GetOldSessionKey(keyId)`.
-    * The payload is decrypted using AES-GCM (with key ID and version as associated data) and then JSON unmarshaled into a `CompleteCsrfToken` struct.
-
-3.  **Validation (`validateCsrf` in `executor.go`)**:
-    * The extracted `CompleteCsrfToken` must be present and valid (e.g., not expired).
-    * **Tying Check**:
-        * If the user has an authenticated session (`claims != nil && claims.HasSession`):
-            * The CSRF token *must* be tied (`csrfToken.Tied == true`).
-            * The `csrfToken.Tie` value *must* match the `CsrfTokenTie` claim stored in the session claims.
-        * If these conditions are not met, it's considered a CSRF mismatch, and the request is rejected (if `RequireCsrf` is true).
-    * **Refresh**: If the token `NeedsRefresh()`, `AutoSetCsrfCookie` is called to issue a new one.
+// Or, when handling a Gin context directly, use helpers.ErrorResponse to write
+// the HTTP response immediately:
+helpers.ErrorResponse(ctx, errors.NewBadRequest("invalid input", fmt.Errorf("field x missing")))
+```
 
 ---
 
-## 6. Extensibility
+## Module: helpers
 
-### 6.1. Implementing Custom `SessionManager`
-Developers can provide their own implementation of the `core.SessionManager` interface to integrate GOTHIC with different data stores, key management systems, or custom session validation logic. This involves defining how:
-* Session keys are fetched and rotated.
-* Subjects (users) are loaded based on session claims.
-* Session state is verified (e.g., against a server-side blacklist).
-* Custom claim verification logic is applied.
+Purpose: Utility functions used across packages.
 
-The `examples/bare_bones/session.go` and `examples/rbac/session.go` files show mock implementations.
+Key features:
+- Symmetric encryption helpers (AES-GCM) for cookie payloads and CSRF tokens.
+- Response helpers to send JSON success and error responses with optional headers.
+- ID generation utilities and HMAC helpers used for signing or tying tokens.
+- Default value helpers for common zero-value fallbacks.
 
-### 6.2. Implementing Custom RBAC `Manager`
-The `rbac.Manager` interface can be implemented to define how roles and permissions are sourced (e.g., from a database, configuration file, or external service). This includes:
-* `GetSubjectRolesAndPermissions`: How to get direct permissions and roles for a user.
-* `GetRolePermissions`: How to get permissions associated with a specific role.
-* `GetCache`, `GetSubjectPermissionsCacheTtl`, `GetRolePermissionsCacheTtl`: Configuration for caching RBAC data.
+Where to look: helpers/*.go
 
-The `examples/rbac/rbac.go` file provides a sample `MyRbacManager`. `rbac.DefaultRBACManager` offers a base with Ristretto caching.
+Code example (symmetric encryption and response helpers):
 
----
+```go
+// Generate a 32-byte AES key
+key, _ := helpers.GenerateSymmetricKey(helpers.AESKeySize32)
 
-## 7. Error Handling
+// Encrypt / Decrypt with associated data
+ciphertext, _ := helpers.SymmetricEncrypt(key, []byte("payload"), []byte("ad"))
+plaintext, _ := helpers.SymmetricDecrypt(key, ciphertext, []byte("ad"))
+_ = plaintext
 
-### 7.1. `AppError` Structure
-GOTHIC uses a custom `AppError` struct for standardized error handling:
-* `Code`: HTTP status code for the response.
-* `Message`: User-friendly error message for the client.
-* `Err`: The underlying original error (for logging, not typically sent to client in production).
-* `Details`: Optional structured data about the error for the client.
-
-It implements the standard `error` interface and provides a `ToJSONResponse(production bool)` method to format the error for client consumption, conditionally including the underlying error details if not in production mode.
-
-### 7.2. Common Error Types
-The `errors` package defines helper functions to create common `AppError` types:
-* `NewBadRequest` (400)
-* `NewUnauthorized` (401)
-* `NewForbidden` (403)
-* `NewNotFound` (404)
-* `NewConflict` (409)
-* `NewInternalServerError` (500)
-* `NewValidationFailed` (422) - Often wraps `validator.ValidationErrors`.
+// Using response helpers in a Gin handler
+helpers.SuccessResponse(ctx, http.StatusOK, map[string]string{"message": "ok"}, map[string]string{"X-Trace": "abc"})
+```
 
 ---
 
-## 8. Helper Utilities (`helpers` package)
+## Module: rbac
 
-The `helpers` package provides various utility functions:
+Purpose: Role-based access control primitives and enforcement flow.
 
-* **Symmetric Encryption (`symetric_encryption.go`)**:
-    * `GenerateSymmetricKey`: Generates AES keys (16, 24, or 32 bytes).
-    * `SymmetricEncrypt`, `SymmetricDecrypt`: AES-GCM encryption/decryption, allowing for associated data.
-* **Response Formatting (`response.go`)**:
-    * `ErrorResponse`: Sends a JSON error response using `AppError`.
-    * `SuccessResponse`: Sends a JSON success response, optionally setting headers.
-* **ID Generation (`id.go`)**:
-    * `GenerateID`: Creates a random string of a given length using a charset.
-* **HMAC (`hmac.go`)**:
-    * `GenerateHMACSignature`, `VerifyHMACSignature`: For HMAC-SHA256 operations.
-* **Default Values (`default.go`)**:
-    * Functions like `DefaultString`, `DefaultBool`, `DefaultInt`, `DefaultTimeDuration` provide a default value if the input is its zero value.
-* **Interfaces (`interfaces.go`)**: Defines generic `SubjectLike` and `BaseRouteComponents` interfaces for type hinting.
+Key concepts:
+- Permission type and operations (Set, Unset, Has, And, Or, Marshal/Unmarshal, Serialize/Deserialize).
+- Manager interface: Pluggable provider for subject roles/permissions and role permissions with caching support.
+- Enforcement: Utilities that combine subject permissions and roles to check whether a route's APIConfiguration is satisfied.
+
+Where to look: rbac/*.go
+
+Code example (permissions and enforcement):
+
+```go
+// Create permissions and combine them
+p := rbac.NewPermission(0)
+p.Set(1) // set permission bit 1
+p.Set(2) // set permission bit 2
+
+// Check membership
+check := rbac.NewPermission(1)
+check.Set(2)
+if p.Has(check) {
+    // allowed
+}
+
+// Use rbac.CheckPermissions (example signature)
+// allowed, err := rbac.CheckPermissions(ctx, manager, subjectID, config.GetFlatPermissions())
+```
+
++ Additional example: named permission vars and role mappings
+
+```go
+import "github.com/grzegorzmaniak/gothic/rbac"
+
+// Define named permission bits (bit indexes are arbitrary but consistent)
+var (
+    ReadPerm  = rbac.NewPermission(0) // read = bit 0 - 0001
+    WritePerm = rbac.NewPermission(1) // write = bit 1 - 0010
+    DeletePerm = rbac.NewPermission(2) // delete = bit 2 - 0100
+)
+
+// Define role -> permissions mapping using Permissions.Flatten()
+var RolePermissions = map[string]rbac.Permission{
+    "user":  rbac.Permissions{ReadPerm}.Flatten(), // - 0001
+	// Permissions is a slice of Permission with built in methods to
+	// combine them into a singular Permission bitset
+    "admin": rbac.Permissions{ReadPerm, WritePerm, DeletePerm}.Flatten(), // - 0111
+}
+
+// Example check: ensure a role includes the required permission
+required := WritePerm // action we want to check
+if RolePermissions["admin"].Has(required) {
+    // admin has write permission
+}
+if !RolePermissions["user"].Has(required) {
+    // user does not have write
+}
+```
 
 ---
 
-## 9. Validation (`validation` package)
+## Module: validation
 
-GOTHIC uses a validation system for request inputs and handler outputs.
+> Validation is performed automatically by the framework when handlers return data; you don't need to call these helpers explicitly.
 
-### 9.1. Input Validation (`input.go`)
-* `InputData[T any](ctx *gin.Context)`:
-    * Binds request data (headers via `ShouldBindHeader`, query parameters via `ShouldBindQuery`, and JSON body via `ShouldBindJSON` for relevant methods) into a struct of type `T`.
-    * Validates the populated struct using a `validator.Validate` instance (a default one is created if `CustomValidator` is not initialized via `InitValidator`).
-    * Returns the validated struct or an `AppError` (typically `NewValidationFailed`).
+Purpose: Input and output validation utilities built on go-playground/validator.
 
-### 9.2. Output Validation (`output.go`)
-* `OutputData[Output any](output *Output)`:
-    * Validates the handler's output struct using `CustomValidator`.
-    * Extracts response headers from fields tagged with `header:"Header-Name"` in the output struct.
-    * Returns a map of headers, the validated output, and an `AppError` if validation fails.
+Key features:
+- InputData and BindInput: Bind request headers, query params and JSON body, then validate.
+- OutputData: Validate handler outputs and extract response headers specified via struct tags.
+- InitValidator: Configure or initialize the validator instance.
 
-The validator instance can be customized application-wide by calling `validation.InitValidator(v *validator.Validate)`.
+Where to look: validation/*.go
+
+Code example (binding and validating input/output):
+
+```go
+// Input binding inside a handler
+input, err := validation.InputData[MyInput](ctx)
+if err != nil {
+    helpers.ErrorResponse(ctx, err)
+    return
+}
+
+// Output validation before sending
+headers, out, err := validation.OutputData(&MyOutput{Message: "ok"})
+if err != nil {
+    helpers.ErrorResponse(ctx, err)
+    return
+}
+helpers.SuccessResponse(ctx, http.StatusOK, out, headers)
+```
+
++ Additional example: Custom validator and validation tags
+> This is bound to change from a global package-level to some form of per-request or per-app instance in future versions.
+
+```go
+import (
+	"log"
+	"strings"
+
+	"github.com/go-playground/validator/v10"
+	"github.com/grzegorzmaniak/gothic/validation"
+)
+
+// 1. Define your custom validation function.
+// This example checks if a string contains the word "gothic".
+func isGothic(fl validator.FieldLevel) bool {
+	return strings.Contains(fl.Field().String(), "gothic")
+}
+
+// 2. In your application's setup, before defining routes,
+// create and configure the validator.
+func setupValidator() {
+	// Create a new validator instance
+	v := validator.New()
+
+	// Register your custom validation
+	err := v.RegisterValidation("is-gothic", isGothic)
+	if err != nil {
+		log.Fatalf("failed to register custom validation: %v", err)
+	}
+
+	// Initialize the framework's validator with your custom instance.
+	// This MUST be done before you define any routes that use validation.
+	validation.InitValidator(v)
+}
+
+// 3. Use the custom tag in your structs.
+type MyInput struct {
+	Name string `json:"name" validate:"required,is-gothic"`
+}
+
+// The framework will now use your custom validator.
+// An input like {"name": "this is gothic"} will pass,
+// but {"name": "this is not"} will fail validation.
+```
+
+---
+
+## Module: examples
+
+Purpose: Minimal example apps that show how to implement a SessionManager and RBAC manager and wire GoThic into an HTTP framework.
+
+Notes: Examples are not part of the core library and are provided for illustration only. See examples/bare_bones and examples/rbac.
+
+Code example (run an example):
+
+```bash
+# from repository root
+go run ./examples/bare_bones
+# or run the rbac example
+go run ./examples/rbac
+```
