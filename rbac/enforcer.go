@@ -15,6 +15,18 @@ func roleCheck(subjectRoles []string, routeRolesList map[string]bool, routeRbacP
 	}
 
 	switch routeRbacPolicy {
+	// - Check if Role only is required.
+	case RoleOnly:
+		for _, subjectRole := range subjectRoles {
+			if _, found := routeRolesList[subjectRole]; found {
+				return true
+			}
+		}
+
+	// - Check if only Permissions are required.
+	case PermissionsOnly:
+		return true
+
 	// - Check if the subject has any of the required roles.
 	case PermissionsOrRole,
 		PermissionsAndRole:
@@ -104,6 +116,14 @@ func CheckPermissions(
 	// - Check roles
 	hasRole := roleCheck(subjectRoles, requiredRoles, policy)
 	switch policy {
+	case RoleOnly:
+		// - If only roles are required, return the result of the role check.
+		return hasRole, nil
+
+	case PermissionsOnly:
+		// - If only permissions are required, skip role check.
+		break
+
 	case PermissionsOrRole, PermissionsOrAllRoles:
 		if hasRole {
 			// - The roleCheck function already accounts for the RBAC policy. If the policy

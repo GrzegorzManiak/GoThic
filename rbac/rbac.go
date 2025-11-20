@@ -38,6 +38,12 @@ const (
 
 	// PermissionsAndAllRoles requires that the sessions have ALL permissions AND ALL roles
 	PermissionsAndAllRoles
+
+	// PermissionsOnly requires that the sessions have ALL permissions (skips role check)
+	PermissionsOnly
+
+	// RoleOnly requires that the sessions have at least ONE of the roles (skips permission check)
+	RoleOnly
 )
 
 type Manager interface {
