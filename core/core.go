@@ -2,6 +2,7 @@ package core
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/go-playground/validator/v10"
 	"github.com/grzegorzmaniak/gothic/errors"
 	"github.com/grzegorzmaniak/gothic/helpers"
 	"github.com/grzegorzmaniak/gothic/rbac"
@@ -389,4 +390,77 @@ func ExecuteRoute[InputType any, OutputType any, BaseRoute helpers.BaseRouteComp
 	if appErr = processAndSendHandlerOutput[OutputType](ctx, output, sessionConfig); appErr != nil {
 		helpers.ErrorResponse(ctx, appErr)
 	}
+}
+
+// ExecuteDynamicRoute is a light-weight variant for dynamically defined routes.
+// It mirrors session/RBAC handling from ExecuteRoute but only parses and validates input based on FieldRules,
+// returning the parsed map to a handler that is responsible for crafting the response.
+func ExecuteDynamicRoute[BaseRoute helpers.BaseRouteComponents](
+	ctx *gin.Context,
+	baseRoute BaseRoute,
+	sessionConfig *APIConfiguration,
+	sessionManager SessionManager,
+	validatorInstance *validator.Validate,
+	inputCacheId string,
+	inputFieldRules validation.FieldRules,
+	outputCacheId string,
+	outputFieldRules validation.FieldRules,
+	handlerFunc func(input map[string]interface{}, data *Handler[BaseRoute]) (map[string]any, *errors.AppError),
+) {
+	// - Stage 1: Establish Session Context
+	header, claims, csrfToken, group, appErr := _establishSessionContext(ctx, sessionManager, sessionConfig)
+	if appErr != nil {
+		helpers.ErrorResponse(ctx, appErr)
+		return
+	}
+
+	// - Rbac
+	if rbacErr := processRbac(ctx, sessionManager, sessionConfig, claims); rbacErr != nil {
+		zap.L().Debug("RBAC processing failed", zap.Error(rbacErr))
+		helpers.ErrorResponse(ctx, rbacErr)
+		return
+	}
+
+	// - Stage 2: Prepare Dynamic Handler Input
+	input, appErr := validation.DynamicInputData(ctx, validatorInstance, inputCacheId, inputFieldRules)
+	if appErr != nil {
+		helpers.ErrorResponse(ctx, appErr)
+		return
+	}
+
+	// - Stage 3: Call the specific business logic handler
+	output, handlerAppErr := handlerFunc(input, &Handler[BaseRoute]{
+		BaseRoute:      baseRoute,
+		Context:        ctx,
+		SessionHeader:  header,
+		Claims:         claims,
+		HasSession:     claims != nil && claims.HasSession,
+		SessionManager: sessionManager,
+		SessionGroup:   group,
+		CsrfToken:      csrfToken,
+	})
+	if handlerAppErr != nil {
+		zap.L().Debug("Error returned from dynamic route handler", zap.Error(handlerAppErr), zap.Any("input", input))
+		helpers.ErrorResponse(ctx, handlerAppErr)
+		return
+	}
+
+	// - Stage 4: Process Handler Output and Send Response
+	if sessionConfig.ManualResponse {
+		zap.L().Debug("Response handling is manual for this dynamic route", zap.Any("output_given_by_handler", output))
+		return
+	}
+
+	if outputFieldRules == nil {
+		helpers.ErrorResponse(ctx, errors.NewInternalServerError("Output rules must be provided for dynamic routes", nil))
+		return
+	}
+
+	headers, body, outputErr := validation.DynamicOutputData(validatorInstance, outputCacheId, outputFieldRules, output)
+	if outputErr != nil {
+		helpers.ErrorResponse(ctx, outputErr)
+		return
+	}
+
+	helpers.SuccessResponse(ctx, 200, body, headers)
 }
