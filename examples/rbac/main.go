@@ -7,6 +7,7 @@ import (
 	"github.com/grzegorzmaniak/gothic/cache"
 	"github.com/grzegorzmaniak/gothic/core"
 	"github.com/grzegorzmaniak/gothic/helpers"
+	"github.com/grzegorzmaniak/gothic/validation"
 )
 
 // AppSpecificBaseRoute would be a struct defined by the application developer,
@@ -34,15 +35,17 @@ func main() {
 		Cache:                             cache.BuildDefaultCacheManager(nil),
 	}
 
+	validationEngine := validation.NewEngine(nil)
+
 	router := gin.Default()
 	router.GET("/noAuth", func(ctx *gin.Context) {
-		core.ExecuteRoute(ctx, baseRoute, BasicActionHandlerConfig, mySessionManager, BasicActionHandler)
+		core.ExecuteRoute(ctx, baseRoute, BasicActionHandlerConfig, mySessionManager, validationEngine, BasicActionHandler)
 	})
 
 	// - Or Shorthand version
-	core.GET(router, "/auth", baseRoute, AuthenticatedResourceHandlerConfig, mySessionManager, AuthenticatedResourceHandler)
+	core.GET(router, "/auth", baseRoute, AuthenticatedResourceHandlerConfig, mySessionManager, validationEngine, AuthenticatedResourceHandler)
 
-	core.GET(router, "/authEmpty", baseRoute, AuthenticatedEmptyResourceHandlerConfig, mySessionManager, AuthenticatedEmptyResourceHandler)
+	core.GET(router, "/authEmpty", baseRoute, AuthenticatedEmptyResourceHandlerConfig, mySessionManager, validationEngine, AuthenticatedEmptyResourceHandler)
 
 	httpAddr := fmt.Sprintf("%s:%s", "localhost", "8080")
 	if err := router.Run(httpAddr); err != nil {

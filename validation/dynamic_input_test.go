@@ -13,7 +13,7 @@ import (
 
 func TestDynamicInputData_ValidPayload(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	v := validator.New()
+	engine := NewEngine(validator.New())
 
 	rules := FieldRules{
 		"Email": {Tags: "required,email"},
@@ -28,7 +28,7 @@ func TestDynamicInputData_ValidPayload(t *testing.T) {
 	ctx, _ := gin.CreateTestContext(w)
 	ctx.Request = req
 
-	result, err := DynamicInputData(ctx, v, "user_rules", rules)
+	result, err := DynamicInputData(ctx, engine, "user_rules", rules)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -46,7 +46,7 @@ func TestDynamicInputData_ValidPayload(t *testing.T) {
 
 func TestDynamicInputData_InvalidPayload(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	v := validator.New()
+	engine := NewEngine(validator.New())
 
 	rules := FieldRules{
 		"Email": {Tags: "required,email"},
@@ -61,17 +61,18 @@ func TestDynamicInputData_InvalidPayload(t *testing.T) {
 	ctx, _ := gin.CreateTestContext(w)
 	ctx.Request = req
 
-	if _, err := DynamicInputData(ctx, v, "", rules); err == nil {
+	if _, err := DynamicInputData(ctx, engine, "", rules); err == nil {
 		t.Fatal("expected validation error, got nil")
 	}
 }
 
 func TestGetDynamicStructTypeCaching(t *testing.T) {
+	engine := NewEngine(validator.New())
 	rules := FieldRules{
 		"Email": {Tags: "required,email"},
 	}
 
-	first, err := getDynamicStructType("cache-key", rules)
+	first, err := getDynamicStructType(engine, "cache-key", rules)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -81,7 +82,7 @@ func TestGetDynamicStructTypeCaching(t *testing.T) {
 		"Name":  {Tags: "required", Type: "string"},
 	}
 
-	second, err := getDynamicStructType("cache-key", alteredRules)
+	second, err := getDynamicStructType(engine, "cache-key", alteredRules)
 	if err != nil {
 		t.Fatalf("expected no error retrieving cached struct, got %v", err)
 	}
@@ -102,7 +103,7 @@ func TestBuildDynamicStructType_RejectsUnexportedField(t *testing.T) {
 }
 
 func TestDynamicOutputData_ValidPayload(t *testing.T) {
-	v := validator.New()
+	engine := NewEngine(validator.New())
 	rules := FieldRules{
 		"Email": {Tags: "required,email", JSONName: "email"},
 		"Age":   {Tags: "gte=18,lte=130", Type: "int"},
@@ -113,7 +114,7 @@ func TestDynamicOutputData_ValidPayload(t *testing.T) {
 		"Age":   45,
 	}
 
-	headers, body, err := DynamicOutputData(v, "out_rules", rules, output)
+	headers, body, err := DynamicOutputData(engine, "out_rules", rules, output)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -132,7 +133,7 @@ func TestDynamicOutputData_ValidPayload(t *testing.T) {
 }
 
 func TestDynamicOutputData_HeaderExtraction(t *testing.T) {
-	v := validator.New()
+	engine := NewEngine(validator.New())
 	rules := FieldRules{
 		"Token": {Tags: "required", Header: "X-Token"},
 	}
@@ -141,7 +142,7 @@ func TestDynamicOutputData_HeaderExtraction(t *testing.T) {
 		"Token": "abc123",
 	}
 
-	headers, _, err := DynamicOutputData(v, "", rules, output)
+	headers, _, err := DynamicOutputData(engine, "", rules, output)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -152,11 +153,12 @@ func TestDynamicOutputData_HeaderExtraction(t *testing.T) {
 }
 
 func TestDynamicOutputData_ValidatorRequired(t *testing.T) {
+	engine := &Engine{}
 	rules := FieldRules{
 		"Email": {Tags: "required,email"},
 	}
 
-	_, _, err := DynamicOutputData(nil, "", rules, map[string]interface{}{"Email": "bad"})
+	_, _, err := DynamicOutputData(engine, "", rules, map[string]interface{}{"Email": "bad"})
 	if err == nil {
 		t.Fatal("expected error when validator is missing")
 	}

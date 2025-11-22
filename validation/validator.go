@@ -1,28 +1,28 @@
 package validation
 
-import (
-	"sync"
+import "github.com/go-playground/validator/v10"
 
-	"github.com/go-playground/validator/v10"
-	"go.uber.org/zap"
-)
-
-// CustomValidator is a global validator instance for struct validation. Im aware
-// that this is not the best practice, but for what we need, it is sufficient.
-var (
-	CustomValidator *validator.Validate
-	once            sync.Once
-)
-
-// InitValidator sets the global validator instance to the one provided ONCE.
-func InitValidator(v *validator.Validate) {
-	once.Do(func() {
-		zap.L().Debug("Initializing default validator")
-		CustomValidator = v
-	})
+// Engine holds validation state, including the validator instance and dynamic struct cache.
+type Engine struct {
+	validator          *validator.Validate
+	dynamicStructCache dynamicStructCache
 }
 
-// initDefaultValidator initializes the global validator with a default instance.
-func initDefaultValidator() {
-	InitValidator(validator.New())
+// NewEngine constructs a validation Engine. If v is nil, a new validator instance is created.
+func NewEngine(v *validator.Validate) *Engine {
+	if v == nil {
+		v = validator.New()
+	}
+
+	return &Engine{
+		validator: v,
+	}
+}
+
+// Validator exposes the underlying validator instance.
+func (e *Engine) Validator() *validator.Validate {
+	if e == nil {
+		return nil
+	}
+	return e.validator
 }

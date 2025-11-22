@@ -193,7 +193,7 @@ func TestInputData(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	t.Run("Valid input passes validation", func(t *testing.T) {
-		InitValidator(validator.New())
+		engine := NewEngine(validator.New())
 
 		jsonBody := `{"name":"John","email":"john@example.com","age":30}`
 		req := httptest.NewRequest(http.MethodPost, "/test?page=1", bytes.NewBufferString(jsonBody))
@@ -203,7 +203,7 @@ func TestInputData(t *testing.T) {
 		ctx, _ := gin.CreateTestContext(w)
 		ctx.Request = req
 
-		input, err := InputData[testInputStruct](ctx)
+		input, err := InputData[testInputStruct](ctx, engine)
 		if err != nil {
 			t.Fatalf("Expected no error, got %v", err)
 		}
@@ -213,7 +213,7 @@ func TestInputData(t *testing.T) {
 	})
 
 	t.Run("Invalid input fails validation - missing required field", func(t *testing.T) {
-		InitValidator(validator.New())
+		engine := NewEngine(validator.New())
 
 		jsonBody := `{"name":"John","age":30}`
 		req := httptest.NewRequest(http.MethodPost, "/test?page=1", bytes.NewBufferString(jsonBody))
@@ -223,14 +223,14 @@ func TestInputData(t *testing.T) {
 		ctx, _ := gin.CreateTestContext(w)
 		ctx.Request = req
 
-		_, err := InputData[testInputStruct](ctx)
+		_, err := InputData[testInputStruct](ctx, engine)
 		if err == nil {
 			t.Error("Expected validation error for missing email, got none")
 		}
 	})
 
 	t.Run("Invalid input fails validation - invalid email format", func(t *testing.T) {
-		InitValidator(validator.New())
+		engine := NewEngine(validator.New())
 
 		jsonBody := `{"name":"John","email":"not-an-email","age":30}`
 		req := httptest.NewRequest(http.MethodPost, "/test?page=1", bytes.NewBufferString(jsonBody))
@@ -240,14 +240,14 @@ func TestInputData(t *testing.T) {
 		ctx, _ := gin.CreateTestContext(w)
 		ctx.Request = req
 
-		_, err := InputData[testInputStruct](ctx)
+		_, err := InputData[testInputStruct](ctx, engine)
 		if err == nil {
 			t.Error("Expected validation error for invalid email, got none")
 		}
 	})
 
 	t.Run("Invalid input fails validation - age out of range", func(t *testing.T) {
-		InitValidator(validator.New())
+		engine := NewEngine(validator.New())
 
 		jsonBody := `{"name":"John","email":"john@example.com","age":200}`
 		req := httptest.NewRequest(http.MethodPost, "/test?page=1", bytes.NewBufferString(jsonBody))
@@ -257,14 +257,14 @@ func TestInputData(t *testing.T) {
 		ctx, _ := gin.CreateTestContext(w)
 		ctx.Request = req
 
-		_, err := InputData[testInputStruct](ctx)
+		_, err := InputData[testInputStruct](ctx, engine)
 		if err == nil {
 			t.Error("Expected validation error for age > 150, got none")
 		}
 	})
 
 	t.Run("Invalid input fails validation - negative age", func(t *testing.T) {
-		InitValidator(validator.New())
+		engine := NewEngine(validator.New())
 
 		jsonBody := `{"name":"John","email":"john@example.com","age":-5}`
 		req := httptest.NewRequest(http.MethodPost, "/test?page=1", bytes.NewBufferString(jsonBody))
@@ -274,14 +274,14 @@ func TestInputData(t *testing.T) {
 		ctx, _ := gin.CreateTestContext(w)
 		ctx.Request = req
 
-		_, err := InputData[testInputStruct](ctx)
+		_, err := InputData[testInputStruct](ctx, engine)
 		if err == nil {
 			t.Error("Expected validation error for negative age, got none")
 		}
 	})
 
 	t.Run("Invalid input fails validation - page less than 1", func(t *testing.T) {
-		InitValidator(validator.New())
+		engine := NewEngine(validator.New())
 
 		jsonBody := `{"name":"John","email":"john@example.com","age":30}`
 		req := httptest.NewRequest(http.MethodPost, "/test?page=0", bytes.NewBufferString(jsonBody))
@@ -291,14 +291,14 @@ func TestInputData(t *testing.T) {
 		ctx, _ := gin.CreateTestContext(w)
 		ctx.Request = req
 
-		_, err := InputData[testInputStruct](ctx)
+		_, err := InputData[testInputStruct](ctx, engine)
 		if err == nil {
 			t.Error("Expected validation error for page < 1, got none")
 		}
 	})
 
 	t.Run("Nil validator initializes default", func(t *testing.T) {
-		InitValidator(nil)
+		engine := NewEngine(nil)
 
 		jsonBody := `{"name":"John","email":"john@example.com","age":30}`
 		req := httptest.NewRequest(http.MethodPost, "/test?page=1", bytes.NewBufferString(jsonBody))
@@ -308,12 +308,9 @@ func TestInputData(t *testing.T) {
 		ctx, _ := gin.CreateTestContext(w)
 		ctx.Request = req
 
-		input, err := InputData[testInputStruct](ctx)
+		input, err := InputData[testInputStruct](ctx, engine)
 		if err != nil {
 			t.Fatalf("Expected no error with auto-initialized validator, got %v", err)
-		}
-		if CustomValidator == nil {
-			t.Error("Expected CustomValidator to be initialized")
 		}
 		if input.Name != "John" {
 			t.Errorf("Expected name 'John', got '%s'", input.Name)
@@ -321,7 +318,7 @@ func TestInputData(t *testing.T) {
 	})
 
 	t.Run("Bind error propagates before validation", func(t *testing.T) {
-		InitValidator(validator.New())
+		engine := NewEngine(validator.New())
 
 		jsonBody := `invalid json`
 		req := httptest.NewRequest(http.MethodPost, "/test", bytes.NewBufferString(jsonBody))
@@ -331,7 +328,7 @@ func TestInputData(t *testing.T) {
 		ctx, _ := gin.CreateTestContext(w)
 		ctx.Request = req
 
-		_, err := InputData[testInputStruct](ctx)
+		_, err := InputData[testInputStruct](ctx, engine)
 		if err == nil {
 			t.Error("Expected error for invalid JSON, got none")
 		}
@@ -343,7 +340,7 @@ func TestInputData(t *testing.T) {
 			Count int    `json:"count"`
 		}
 
-		InitValidator(validator.New())
+		engine := NewEngine(validator.New())
 
 		jsonBody := `{"name":"","count":0}`
 		req := httptest.NewRequest(http.MethodPost, "/test", bytes.NewBufferString(jsonBody))
@@ -353,7 +350,7 @@ func TestInputData(t *testing.T) {
 		ctx, _ := gin.CreateTestContext(w)
 		ctx.Request = req
 
-		input, err := InputData[optionalStruct](ctx)
+		input, err := InputData[optionalStruct](ctx, engine)
 		if err != nil {
 			t.Fatalf("Expected no error for optional fields, got %v", err)
 		}
@@ -370,7 +367,7 @@ func TestInputDataEdgeCases(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	t.Run("Multiple validation errors", func(t *testing.T) {
-		InitValidator(validator.New())
+		engine := NewEngine(validator.New())
 
 		jsonBody := `{"name":"","email":"invalid","age":-1}`
 		req := httptest.NewRequest(http.MethodPost, "/test?page=0", bytes.NewBufferString(jsonBody))
@@ -380,7 +377,7 @@ func TestInputDataEdgeCases(t *testing.T) {
 		ctx, _ := gin.CreateTestContext(w)
 		ctx.Request = req
 
-		_, err := InputData[testInputStruct](ctx)
+		_, err := InputData[testInputStruct](ctx, engine)
 		if err == nil {
 			t.Error("Expected validation errors for multiple invalid fields, got none")
 		}
@@ -389,7 +386,7 @@ func TestInputDataEdgeCases(t *testing.T) {
 	t.Run("Empty struct passes validation", func(t *testing.T) {
 		type emptyStruct struct{}
 
-		InitValidator(validator.New())
+		engine := NewEngine(validator.New())
 
 		req := httptest.NewRequest(http.MethodGet, "/test", nil)
 
@@ -397,7 +394,7 @@ func TestInputDataEdgeCases(t *testing.T) {
 		ctx, _ := gin.CreateTestContext(w)
 		ctx.Request = req
 
-		input, err := InputData[emptyStruct](ctx)
+		input, err := InputData[emptyStruct](ctx, engine)
 		if err != nil {
 			t.Fatalf("Expected no error for empty struct, got %v", err)
 		}
@@ -414,7 +411,7 @@ func TestInputDataEdgeCases(t *testing.T) {
 			} `json:"user" validate:"required"`
 		}
 
-		InitValidator(validator.New())
+		engine := NewEngine(validator.New())
 
 		jsonBody := `{"user":{"name":"John","email":"john@example.com"}}`
 		req := httptest.NewRequest(http.MethodPost, "/test", bytes.NewBufferString(jsonBody))
@@ -424,7 +421,7 @@ func TestInputDataEdgeCases(t *testing.T) {
 		ctx, _ := gin.CreateTestContext(w)
 		ctx.Request = req
 
-		input, err := InputData[nestedStruct](ctx)
+		input, err := InputData[nestedStruct](ctx, engine)
 		if err != nil {
 			t.Fatalf("Expected no error for valid nested struct, got %v", err)
 		}

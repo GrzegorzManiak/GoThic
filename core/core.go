@@ -2,7 +2,6 @@ package core
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/go-playground/validator/v10"
 	"github.com/grzegorzmaniak/gothic/errors"
 	"github.com/grzegorzmaniak/gothic/helpers"
 	"github.com/grzegorzmaniak/gothic/rbac"
@@ -244,10 +243,14 @@ func validateCsrf(
 // It returns the validated input, subject, subject-fetched status, or an AppError.
 func prepareHandlerData[InputType any](
 	ctx *gin.Context,
+	validationEngine *validation.Engine,
 ) (*InputType, *errors.AppError) {
+	if validationEngine == nil {
+		validationEngine = validation.NewEngine(nil)
+	}
 
 	// - Input validation
-	input, inputErr := validation.InputData[InputType](ctx)
+	input, inputErr := validation.InputData[InputType](ctx, validationEngine)
 	if inputErr != nil {
 		zap.L().Debug("Error validating input data", zap.Error(inputErr), zap.Any("raw_input_attempt", input)) // 'input' might be partially populated or nil on error
 		return nil, inputErr
@@ -262,7 +265,11 @@ func processAndSendHandlerOutput[OutputType any](
 	ctx *gin.Context,
 	output *OutputType,
 	sessionConfig *APIConfiguration,
+	validationEngine *validation.Engine,
 ) *errors.AppError {
+	if validationEngine == nil {
+		validationEngine = validation.NewEngine(nil)
+	}
 
 	// - Processing stops here, handler is responsible for response
 	if sessionConfig.ManualResponse {
@@ -271,7 +278,7 @@ func processAndSendHandlerOutput[OutputType any](
 	}
 
 	// - Output validation
-	responseHeaders, responseBody, outputValErr := validation.OutputData(output)
+	responseHeaders, responseBody, outputValErr := validation.OutputData(validationEngine, output)
 	if outputValErr != nil {
 		zap.L().Debug("Error validating output data", zap.Error(outputValErr), zap.Any("raw_output_from_handler", output))
 		return outputValErr
@@ -345,8 +352,13 @@ func ExecuteRoute[InputType any, OutputType any, BaseRoute helpers.BaseRouteComp
 	baseRoute BaseRoute,
 	sessionConfig *APIConfiguration,
 	sessionManager SessionManager,
+	validationEngine *validation.Engine,
 	handlerFunc func(input *InputType, data *Handler[BaseRoute]) (*OutputType, *errors.AppError),
 ) {
+	if validationEngine == nil {
+		validationEngine = validation.NewEngine(nil)
+	}
+
 	// - Stage 1: Establish Session Context
 	header, claims, csrfToken, group, appErr := _establishSessionContext(ctx, sessionManager, sessionConfig)
 	if appErr != nil {
@@ -362,7 +374,7 @@ func ExecuteRoute[InputType any, OutputType any, BaseRoute helpers.BaseRouteComp
 	}
 
 	// - Stage 2: Prepare Handler Input and Subject Data
-	input, appErr := prepareHandlerData[InputType](ctx)
+	input, appErr := prepareHandlerData[InputType](ctx, validationEngine)
 	if appErr != nil {
 		helpers.ErrorResponse(ctx, appErr)
 		return
@@ -387,7 +399,7 @@ func ExecuteRoute[InputType any, OutputType any, BaseRoute helpers.BaseRouteComp
 	}
 
 	// - Stage 4: Process Handler Output and Send Response
-	if appErr = processAndSendHandlerOutput[OutputType](ctx, output, sessionConfig); appErr != nil {
+	if appErr = processAndSendHandlerOutput[OutputType](ctx, output, sessionConfig, validationEngine); appErr != nil {
 		helpers.ErrorResponse(ctx, appErr)
 	}
 }
@@ -400,13 +412,17 @@ func ExecuteDynamicRoute[BaseRoute helpers.BaseRouteComponents](
 	baseRoute BaseRoute,
 	sessionConfig *APIConfiguration,
 	sessionManager SessionManager,
-	validatorInstance *validator.Validate,
+	validationEngine *validation.Engine,
 	inputCacheId string,
 	inputFieldRules validation.FieldRules,
 	outputCacheId string,
 	outputFieldRules validation.FieldRules,
 	handlerFunc func(input map[string]interface{}, data *Handler[BaseRoute]) (map[string]any, *errors.AppError),
 ) {
+	if validationEngine == nil {
+		validationEngine = validation.NewEngine(nil)
+	}
+
 	// - Stage 1: Establish Session Context
 	header, claims, csrfToken, group, appErr := _establishSessionContext(ctx, sessionManager, sessionConfig)
 	if appErr != nil {
@@ -422,7 +438,7 @@ func ExecuteDynamicRoute[BaseRoute helpers.BaseRouteComponents](
 	}
 
 	// - Stage 2: Prepare Dynamic Handler Input
-	input, appErr := validation.DynamicInputData(ctx, validatorInstance, inputCacheId, inputFieldRules)
+	input, appErr := validation.DynamicInputData(ctx, validationEngine, inputCacheId, inputFieldRules)
 	if appErr != nil {
 		helpers.ErrorResponse(ctx, appErr)
 		return
@@ -456,7 +472,7 @@ func ExecuteDynamicRoute[BaseRoute helpers.BaseRouteComponents](
 		return
 	}
 
-	headers, body, outputErr := validation.DynamicOutputData(validatorInstance, outputCacheId, outputFieldRules, output)
+	headers, body, outputErr := validation.DynamicOutputData(validationEngine, outputCacheId, outputFieldRules, output)
 	if outputErr != nil {
 		helpers.ErrorResponse(ctx, outputErr)
 		return

@@ -16,7 +16,7 @@ type testOutputStruct struct {
 
 func TestOutputData(t *testing.T) {
 	t.Run("Valid output with headers", func(t *testing.T) {
-		InitValidator(validator.New())
+		engine := NewEngine(validator.New())
 
 		output := &testOutputStruct{
 			Message:    "Success",
@@ -26,7 +26,7 @@ func TestOutputData(t *testing.T) {
 			Count:      10,
 		}
 
-		headers, result, err := OutputData(output)
+		headers, result, err := OutputData(engine, output)
 		if err != nil {
 			t.Fatalf("Expected no error, got %v", err)
 		}
@@ -53,14 +53,14 @@ func TestOutputData(t *testing.T) {
 			Value   int    `json:"value"`
 		}
 
-		InitValidator(validator.New())
+		engine := NewEngine(validator.New())
 
 		output := &simpleOutput{
 			Message: "Test",
 			Value:   42,
 		}
 
-		headers, result, err := OutputData(output)
+		headers, result, err := OutputData(engine, output)
 		if err != nil {
 			t.Fatalf("Expected no error, got %v", err)
 		}
@@ -76,7 +76,7 @@ func TestOutputData(t *testing.T) {
 	})
 
 	t.Run("Invalid output - missing required field", func(t *testing.T) {
-		InitValidator(validator.New())
+		engine := NewEngine(validator.New())
 
 		output := &testOutputStruct{
 			Message:    "",
@@ -86,14 +86,14 @@ func TestOutputData(t *testing.T) {
 			Count:      10,
 		}
 
-		_, _, err := OutputData(output)
+		_, _, err := OutputData(engine, output)
 		if err == nil {
 			t.Error("Expected validation error for missing required message, got none")
 		}
 	})
 
 	t.Run("Invalid output - missing required header field", func(t *testing.T) {
-		InitValidator(validator.New())
+		engine := NewEngine(validator.New())
 
 		output := &testOutputStruct{
 			Message:    "Success",
@@ -103,14 +103,14 @@ func TestOutputData(t *testing.T) {
 			Count:      10,
 		}
 
-		_, _, err := OutputData(output)
+		_, _, err := OutputData(engine, output)
 		if err == nil {
 			t.Error("Expected validation error for missing required token, got none")
 		}
 	})
 
 	t.Run("Invalid output - status code out of range low", func(t *testing.T) {
-		InitValidator(validator.New())
+		engine := NewEngine(validator.New())
 
 		output := &testOutputStruct{
 			Message:    "Success",
@@ -120,14 +120,14 @@ func TestOutputData(t *testing.T) {
 			Count:      10,
 		}
 
-		_, _, err := OutputData(output)
+		_, _, err := OutputData(engine, output)
 		if err == nil {
 			t.Error("Expected validation error for status code < 100, got none")
 		}
 	})
 
 	t.Run("Invalid output - status code out of range high", func(t *testing.T) {
-		InitValidator(validator.New())
+		engine := NewEngine(validator.New())
 
 		output := &testOutputStruct{
 			Message:    "Success",
@@ -137,14 +137,14 @@ func TestOutputData(t *testing.T) {
 			Count:      10,
 		}
 
-		_, _, err := OutputData(output)
+		_, _, err := OutputData(engine, output)
 		if err == nil {
 			t.Error("Expected validation error for status code > 599, got none")
 		}
 	})
 
 	t.Run("Invalid output - negative count", func(t *testing.T) {
-		InitValidator(validator.New())
+		engine := NewEngine(validator.New())
 
 		output := &testOutputStruct{
 			Message:    "Success",
@@ -154,25 +154,25 @@ func TestOutputData(t *testing.T) {
 			Count:      -5,
 		}
 
-		_, _, err := OutputData(output)
+		_, _, err := OutputData(engine, output)
 		if err == nil {
 			t.Error("Expected validation error for negative count, got none")
 		}
 	})
 
 	t.Run("Nil output returns error", func(t *testing.T) {
-		InitValidator(validator.New())
+		engine := NewEngine(validator.New())
 
 		var output *testOutputStruct
 
-		_, _, err := OutputData(output)
+		_, _, err := OutputData(engine, output)
 		if err == nil {
 			t.Error("Expected error for nil output, got none")
 		}
 	})
 
 	t.Run("Nil validator initializes default", func(t *testing.T) {
-		InitValidator(nil)
+		engine := NewEngine(nil)
 
 		output := &testOutputStruct{
 			Message:    "Success",
@@ -182,12 +182,9 @@ func TestOutputData(t *testing.T) {
 			Count:      10,
 		}
 
-		headers, result, err := OutputData(output)
+		headers, result, err := OutputData(engine, output)
 		if err != nil {
 			t.Fatalf("Expected no error with auto-initialized validator, got %v", err)
-		}
-		if CustomValidator == nil {
-			t.Error("Expected CustomValidator to be initialized")
 		}
 		if result == nil {
 			t.Fatal("Expected non-nil result")
@@ -205,7 +202,7 @@ func TestOutputData(t *testing.T) {
 			Header3 string `header:"X-Custom-3"`
 		}
 
-		InitValidator(validator.New())
+		engine := NewEngine(validator.New())
 
 		output := &multiHeaderOutput{
 			Data:    "test",
@@ -214,7 +211,7 @@ func TestOutputData(t *testing.T) {
 			Header3: "value3",
 		}
 
-		headers, result, err := OutputData(output)
+		headers, result, err := OutputData(engine, output)
 		if err != nil {
 			t.Fatalf("Expected no error, got %v", err)
 		}
@@ -236,7 +233,7 @@ func TestOutputData(t *testing.T) {
 	})
 
 	t.Run("Empty string header values", func(t *testing.T) {
-		InitValidator(validator.New())
+		engine := NewEngine(validator.New())
 
 		output := &testOutputStruct{
 			Message:    "Success",
@@ -246,7 +243,7 @@ func TestOutputData(t *testing.T) {
 			Count:      0,
 		}
 
-		headers, result, err := OutputData(output)
+		headers, result, err := OutputData(engine, output)
 		if err != nil {
 			t.Fatalf("Expected no error, got %v", err)
 		}
@@ -259,7 +256,7 @@ func TestOutputData(t *testing.T) {
 	})
 
 	t.Run("Valid output with various status codes", func(t *testing.T) {
-		InitValidator(validator.New())
+		engine := NewEngine(validator.New())
 
 		validStatusCodes := []int{100, 200, 201, 204, 301, 400, 404, 500, 503, 599}
 
@@ -272,7 +269,7 @@ func TestOutputData(t *testing.T) {
 				Count:      1,
 			}
 
-			_, result, err := OutputData(output)
+			_, result, err := OutputData(engine, output)
 			if err != nil {
 				t.Errorf("Expected no error for status code %d, got %v", statusCode, err)
 			}
@@ -287,11 +284,11 @@ func TestOutputDataEdgeCases(t *testing.T) {
 	t.Run("Empty struct with no fields", func(t *testing.T) {
 		type emptyOutput struct{}
 
-		InitValidator(validator.New())
+		engine := NewEngine(validator.New())
 
 		output := &emptyOutput{}
 
-		headers, result, err := OutputData(output)
+		headers, result, err := OutputData(engine, output)
 		if err != nil {
 			t.Fatalf("Expected no error for empty struct, got %v", err)
 		}
@@ -309,14 +306,14 @@ func TestOutputDataEdgeCases(t *testing.T) {
 			Token     string `header:"X-Token"`
 		}
 
-		InitValidator(validator.New())
+		engine := NewEngine(validator.New())
 
 		output := &headerOnlyOutput{
 			SessionID: "session123",
 			Token:     "token456",
 		}
 
-		headers, result, err := OutputData(output)
+		headers, result, err := OutputData(engine, output)
 		if err != nil {
 			t.Fatalf("Expected no error, got %v", err)
 		}
@@ -334,14 +331,14 @@ func TestOutputDataEdgeCases(t *testing.T) {
 			Count   int    `json:"count"`
 		}
 
-		InitValidator(validator.New())
+		engine := NewEngine(validator.New())
 
 		output := &noHeaderOutput{
 			Message: "Test",
 			Count:   5,
 		}
 
-		headers, result, err := OutputData(output)
+		headers, result, err := OutputData(engine, output)
 		if err != nil {
 			t.Fatalf("Expected no error, got %v", err)
 		}
@@ -354,7 +351,7 @@ func TestOutputDataEdgeCases(t *testing.T) {
 	})
 
 	t.Run("Multiple validation errors", func(t *testing.T) {
-		InitValidator(validator.New())
+		engine := NewEngine(validator.New())
 
 		output := &testOutputStruct{
 			Message:    "",
@@ -364,7 +361,7 @@ func TestOutputDataEdgeCases(t *testing.T) {
 			Count:      -10,
 		}
 
-		_, _, err := OutputData(output)
+		_, _, err := OutputData(engine, output)
 		if err == nil {
 			t.Error("Expected validation errors for multiple invalid fields, got none")
 		}
@@ -378,13 +375,13 @@ func TestOutputDataEdgeCases(t *testing.T) {
 			} `json:"response" validate:"required"`
 		}
 
-		InitValidator(validator.New())
+		engine := NewEngine(validator.New())
 
 		output := &nestedOutput{}
 		output.Response.Message = "Success"
 		output.Response.Code = 200
 
-		headers, result, err := OutputData(output)
+		headers, result, err := OutputData(engine, output)
 		if err != nil {
 			t.Fatalf("Expected no error for valid nested struct, got %v", err)
 		}
@@ -405,7 +402,7 @@ func TestOutputDataEdgeCases(t *testing.T) {
 			Count   *int    `json:"count"`
 		}
 
-		InitValidator(validator.New())
+		engine := NewEngine(validator.New())
 
 		msg := "Test"
 		cnt := 5
@@ -414,7 +411,7 @@ func TestOutputDataEdgeCases(t *testing.T) {
 			Count:   &cnt,
 		}
 
-		headers, result, err := OutputData(output)
+		headers, result, err := OutputData(engine, output)
 		if err != nil {
 			t.Fatalf("Expected no error for struct with pointers, got %v", err)
 		}
@@ -436,7 +433,7 @@ func TestOutputDataEdgeCases(t *testing.T) {
 			NotAHeader int    `header:"number"`
 		}
 
-		InitValidator(validator.New())
+		engine := NewEngine(validator.New())
 
 		output := &mixedOutput{
 			Data:       "test",
@@ -444,7 +441,7 @@ func TestOutputDataEdgeCases(t *testing.T) {
 			NotAHeader: 42,
 		}
 
-		headers, result, err := OutputData(output)
+		headers, result, err := OutputData(engine, output)
 		if err != nil {
 			t.Fatalf("Expected no error, got %v", err)
 		}

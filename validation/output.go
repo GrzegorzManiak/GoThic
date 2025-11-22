@@ -11,7 +11,7 @@ import (
 // It returns the header map, the validated output struct, and any error that occurred.
 // NOTE: I dont think that this is the fastest way to do this, so if you have any
 // suggestions, please let me know. (Or make a PR)
-func OutputData[Output any](output *Output) (map[string]string, *Output, *errors.AppError) {
+func OutputData[Output any](engine *Engine, output *Output) (map[string]string, *Output, *errors.AppError) {
 	// - Initialize an empty header map
 	headers := make(map[string]string)
 
@@ -19,13 +19,12 @@ func OutputData[Output any](output *Output) (map[string]string, *Output, *errors
 		return headers, nil, errors.NewInternalServerError("Output data is nil, cannot validate", nil, "nil_output_validation")
 	}
 
-	if CustomValidator == nil {
-		zap.L().Debug("CustomValidator is nil, initializing default validator")
-		initDefaultValidator()
+	if engine == nil || engine.validator == nil {
+		return headers, nil, errors.NewInternalServerError("Validator is not initialized", nil)
 	}
 
 	// - Validate the output structure
-	if err := CustomValidator.Struct(*output); err != nil {
+	if err := engine.validator.Struct(*output); err != nil {
 		return headers, nil, errors.NewValidationFailed("Output data validation failed", err)
 	}
 

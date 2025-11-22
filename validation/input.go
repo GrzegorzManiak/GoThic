@@ -6,7 +6,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/grzegorzmaniak/gothic/errors"
-	"go.uber.org/zap"
 )
 
 func bindInput(ctx *gin.Context, target interface{}) *errors.AppError {
@@ -47,11 +46,10 @@ func BindInput[T any](ctx *gin.Context) (*T, *errors.AppError) {
 	return &input, nil
 }
 
-// InputData binds and validates the input data from the request context.
-func InputData[T any](ctx *gin.Context) (*T, *errors.AppError) {
-	if CustomValidator == nil {
-		zap.L().Debug("CustomValidator is nil, initializing default validator")
-		initDefaultValidator()
+// InputData binds and validates the input data from the request context using the Engine's validator.
+func InputData[T any](ctx *gin.Context, engine *Engine) (*T, *errors.AppError) {
+	if engine == nil || engine.validator == nil {
+		return nil, errors.NewInternalServerError("Validator is not initialized", nil)
 	}
 
 	input, err := BindInput[T](ctx)
@@ -59,7 +57,7 @@ func InputData[T any](ctx *gin.Context) (*T, *errors.AppError) {
 		return nil, err
 	}
 
-	if err := CustomValidator.Struct(*input); err != nil {
+	if err := engine.validator.Struct(*input); err != nil {
 		return nil, errors.NewValidationFailed("Input validation failed", err)
 	}
 

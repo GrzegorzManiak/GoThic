@@ -9,7 +9,6 @@ import (
 	"unicode"
 
 	"github.com/gin-gonic/gin"
-	"github.com/go-playground/validator/v10"
 	"github.com/grzegorzmaniak/gothic/errors"
 	"go.uber.org/zap"
 )
@@ -29,18 +28,27 @@ type FieldRule struct {
 // FieldRules describes a dynamic struct definition keyed by exported field names.
 type FieldRules map[string]FieldRule
 
-var dynamicStructCache sync.Map
+type dynamicStructCache struct {
+	store sync.Map
+}
 
-func resolveValidator(v *validator.Validate) (*validator.Validate, *errors.AppError) {
-	if v != nil {
-		return v, nil
+func (c *dynamicStructCache) Get(key string) (reflect.Type, bool) {
+	if c == nil || key == "" {
+		return nil, false
 	}
-
-	if CustomValidator != nil {
-		return CustomValidator, nil
+	if cached, ok := c.store.Load(key); ok {
+		if cachedType, ok := cached.(reflect.Type); ok {
+			return cachedType, true
+		}
 	}
+	return nil, false
+}
 
-	return nil, errors.NewInternalServerError("Validator is not initialized", nil)
+func (c *dynamicStructCache) Set(key string, value reflect.Type) {
+	if c == nil || key == "" || value == nil {
+		return
+	}
+	c.store.Store(key, value)
 }
 
 func resolveFieldType(rule FieldRule) (reflect.Type, error) {
@@ -132,13 +140,13 @@ func buildDynamicStructType(rules FieldRules) (reflect.Type, error) {
 	return reflect.StructOf(fields), nil
 }
 
-func getDynamicStructType(cacheID string, rules FieldRules) (reflect.Type, error) {
-	if cacheID != "" {
-		if cached, ok := dynamicStructCache.Load(cacheID); ok {
-			if cachedType, ok := cached.(reflect.Type); ok {
-				return cachedType, nil
-			}
-		}
+func getDynamicStructType(engine *Engine, cacheID string, rules FieldRules) (reflect.Type, error) {
+	if engine == nil {
+		return nil, errors.NewInternalServerError("Validator is not initialized", nil)
+	}
+
+	if cachedType, ok := engine.dynamicStructCache.Get(cacheID); ok {
+		return cachedType, nil
 	}
 
 	constructed, err := buildDynamicStructType(rules)
@@ -146,23 +154,20 @@ func getDynamicStructType(cacheID string, rules FieldRules) (reflect.Type, error
 		return nil, err
 	}
 
-	if cacheID != "" {
-		dynamicStructCache.Store(cacheID, constructed)
-	}
+	engine.dynamicStructCache.Set(cacheID, constructed)
 
 	return constructed, nil
 }
 
 // DynamicInputData builds a dynamic struct based on the provided FieldRules, binds the request into it,
-// validates it using the provided or shared validator, and returns a simple map of field values.
+// validates it using the Engine validator, and returns a simple map of field values.
 // cacheID allows reusing the reflected struct definition across invocations to avoid rebuild costs.
-func DynamicInputData(ctx *gin.Context, v *validator.Validate, cacheID string, rules FieldRules) (map[string]interface{}, *errors.AppError) {
-	validatorInstance, appErr := resolveValidator(v)
-	if appErr != nil {
-		return nil, appErr
+func DynamicInputData(ctx *gin.Context, engine *Engine, cacheID string, rules FieldRules) (map[string]interface{}, *errors.AppError) {
+	if engine == nil || engine.validator == nil {
+		return nil, errors.NewInternalServerError("Validator is not initialized", nil)
 	}
 
-	structType, err := getDynamicStructType(cacheID, rules)
+	structType, err := getDynamicStructType(engine, cacheID, rules)
 	if err != nil {
 		zap.L().Debug("Failed to build dynamic struct type", zap.Error(err), zap.String("cacheId", cacheID))
 		return nil, errors.NewInternalServerError("Failed to prepare dynamic input rules", err)
@@ -174,7 +179,7 @@ func DynamicInputData(ctx *gin.Context, v *validator.Validate, cacheID string, r
 		return nil, bindErr
 	}
 
-	if err := validatorInstance.Struct(target.Elem().Interface()); err != nil {
+	if err := engine.validator.Struct(target.Elem().Interface()); err != nil {
 		zap.L().Debug("Dynamic input validation failed", zap.Error(err))
 		return nil, errors.NewValidationFailed("Input validation failed", err)
 	}
@@ -231,13 +236,12 @@ func setDynamicFieldValue(field reflect.Value, value interface{}) error {
 
 // DynamicOutputData validates outbound data against FieldRules and extracts headers based on the rules.
 // It returns the header map, the validated body (as the reflected struct), or an AppError.
-func DynamicOutputData(v *validator.Validate, cacheID string, rules FieldRules, output map[string]interface{}) (map[string]string, interface{}, *errors.AppError) {
-	validatorInstance, appErr := resolveValidator(v)
-	if appErr != nil {
-		return nil, nil, appErr
+func DynamicOutputData(engine *Engine, cacheID string, rules FieldRules, output map[string]interface{}) (map[string]string, interface{}, *errors.AppError) {
+	if engine == nil || engine.validator == nil {
+		return nil, nil, errors.NewInternalServerError("Validator is not initialized", nil)
 	}
 
-	structType, err := getDynamicStructType(cacheID, rules)
+	structType, err := getDynamicStructType(engine, cacheID, rules)
 	if err != nil {
 		zap.L().Debug("Failed to build dynamic struct type", zap.Error(err), zap.String("cacheId", cacheID))
 		return nil, nil, errors.NewInternalServerError("Failed to prepare dynamic output rules", err)
@@ -254,7 +258,7 @@ func DynamicOutputData(v *validator.Validate, cacheID string, rules FieldRules, 
 		}
 	}
 
-	if err := validatorInstance.Struct(target.Interface()); err != nil {
+	if err := engine.validator.Struct(target.Interface()); err != nil {
 		zap.L().Debug("Dynamic output validation failed", zap.Error(err))
 		return nil, nil, errors.NewValidationFailed("Output validation failed", err)
 	}
