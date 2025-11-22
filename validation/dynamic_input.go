@@ -22,6 +22,7 @@ type FieldRule struct {
 	Type     string     `json:"type,omitempty" yaml:"type,omitempty"`
 	JSONName string     `json:"json,omitempty" yaml:"json,omitempty"`
 	FormName string     `json:"form,omitempty" yaml:"form,omitempty"`
+	URIName  string     `json:"uri,omitempty" yaml:"uri,omitempty"`
 	Header   string     `json:"header,omitempty" yaml:"header,omitempty"`
 	Nested   FieldRules `json:"nested,omitempty" yaml:"nested,omitempty"`
 }
@@ -95,14 +96,28 @@ func buildStructTag(fieldName string, rule FieldRule) reflect.StructTag {
 	}
 	tagParts = append(tagParts, fmt.Sprintf(`json:"%s"`, jsonName))
 
-	formName := rule.FormName
-	if formName == "" {
-		formName = strings.ToLower(fieldName)
-	}
-	tagParts = append(tagParts, fmt.Sprintf(`form:"%s"`, formName))
+	// Only add form, header, and uri tags if NOT nested
+	if len(rule.Nested) == 0 {
+		formName := rule.FormName
+		if formName == "" {
+			formName = strings.ToLower(fieldName)
+		}
+		tagParts = append(tagParts, fmt.Sprintf(`form:"%s"`, formName))
 
-	if rule.Header != "" {
-		tagParts = append(tagParts, fmt.Sprintf(`header:"%s"`, rule.Header))
+		uriName := rule.URIName
+		if uriName == "" {
+			uriName = strings.ToLower(fieldName)
+		}
+		tagParts = append(tagParts, fmt.Sprintf(`uri:"%s"`, uriName))
+
+		if rule.Header != "" {
+			tagParts = append(tagParts, fmt.Sprintf(`header:"%s"`, rule.Header))
+		}
+	} else {
+		// Explicitly ignore form, header, and uri for nested structs
+		tagParts = append(tagParts, `form:"-"`)
+		tagParts = append(tagParts, `header:"-"`)
+		tagParts = append(tagParts, `uri:"-"`)
 	}
 
 	if strings.TrimSpace(rule.Tags) != "" {

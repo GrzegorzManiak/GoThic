@@ -9,6 +9,11 @@ import (
 )
 
 func bindInput(ctx *gin.Context, target interface{}) *errors.AppError {
+	// - Bind URI Parameters (Path variables)
+	if err := ctx.ShouldBindUri(target); err != nil {
+		return errors.NewValidationFailed("Failed to bind URI parameters", err)
+	}
+
 	// - Bind Headers (Universal between all requests)
 	if err := ctx.ShouldBindHeader(target); err != nil {
 		return errors.NewValidationFailed("Failed to bind headers", err)
