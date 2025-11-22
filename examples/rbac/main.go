@@ -35,17 +35,17 @@ func main() {
 		Cache:                             cache.BuildDefaultCacheManager(nil),
 	}
 
-	validationEngine := validation.NewEngine(nil)
-
 	router := gin.Default()
+	validationEngine := validation.NewEngine(nil)
+	routeCtor := core.NewRouteConstructor(router, baseRoute, mySessionManager, validationEngine)
+
 	router.GET("/noAuth", func(ctx *gin.Context) {
 		core.ExecuteRoute(ctx, baseRoute, BasicActionHandlerConfig, mySessionManager, validationEngine, BasicActionHandler)
 	})
 
-	// - Or Shorthand version
-	core.GET(router, "/auth", baseRoute, AuthenticatedResourceHandlerConfig, mySessionManager, validationEngine, AuthenticatedResourceHandler)
-
-	core.GET(router, "/authEmpty", baseRoute, AuthenticatedEmptyResourceHandlerConfig, mySessionManager, validationEngine, AuthenticatedEmptyResourceHandler)
+	// - Shorthand constructor version
+	core.GET(routeCtor, "/auth", AuthenticatedResourceHandlerConfig, AuthenticatedResourceHandler)
+	core.GET(routeCtor, "/authEmpty", AuthenticatedEmptyResourceHandlerConfig, AuthenticatedEmptyResourceHandler)
 
 	httpAddr := fmt.Sprintf("%s:%s", "localhost", "8080")
 	if err := router.Run(httpAddr); err != nil {

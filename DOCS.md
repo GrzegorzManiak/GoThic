@@ -19,6 +19,7 @@ Key concepts and types:
 - SessionClaims: Map-based claims storage with helpers for Get/Set/SetIfNotSet, EncodePayload/DecodePayload.
 - SessionManager interface: Pluggable contract for session key management, verification, storage, subject fetching and RBAC integration. DefaultSessionManager provides a minimal VerifyClaims implementation.
 - APIConfiguration & Handler: Route-level configuration (Allow/Block, Permissions, Roles, SessionRequired, RequireCsrf, etc.) and the context passed to handlers.
+- RouteConstructor: Shorthand to register routes without repeating BaseRoute, SessionManager, and ValidationEngine for every verb.
 
 Where to look: core/*.go (handler.go, session_header.go, session_claims.go, session_manager.go, executor and authorization helpers)
 
@@ -49,6 +50,16 @@ if v, ok := claims.GetClaim("user_id"); ok {
 mgr := &core.DefaultSessionManager{}
 ok, err := mgr.VerifyClaims(context.Background(), claims, &core.APIConfiguration{Allow: []string{"default"}})
 _ = ok; _ = err
+```
+
+Shorthand registration with RouteConstructor:
+
+```go
+validationEngine := validation.NewEngine(nil)
+routeCtor := core.NewRouteConstructor(router, baseRoute, sessionManager, validationEngine)
+
+routeCtor.GET("/health", publicConfig, HealthHandler)
+routeCtor.POST("/profile", authConfig, UpdateProfileHandler)
 ```
 
 ---
@@ -193,24 +204,28 @@ if !RolePermissions["user"].Has(required) {
 Purpose: Input and output validation utilities built on go-playground/validator.
 
 Key features:
-- InputData and BindInput: Bind request headers, query params and JSON body, then validate.
+- Engine: Holds the validator instance and dynamic struct cache.
+- InputData and BindInput: Bind request headers, query params and JSON body, then validate using an Engine.
 - OutputData: Validate handler outputs and extract response headers specified via struct tags.
-- InitValidator: Configure or initialize the validator instance.
+- NewEngine: Create a validation Engine (default validator when nil).
 
 Where to look: validation/*.go
 
 Code example (binding and validating input/output):
 
 ```go
+// Build an Engine once (app setup) and reuse it.
+engine := validation.NewEngine(nil)
+
 // Input binding inside a handler
-input, err := validation.InputData[MyInput](ctx)
+input, err := validation.InputData[MyInput](ctx, engine)
 if err != nil {
     helpers.ErrorResponse(ctx, err)
     return
 }
 
 // Output validation before sending
-headers, out, err := validation.OutputData(&MyOutput{Message: "ok"})
+headers, out, err := validation.OutputData(engine, &MyOutput{Message: "ok"})
 if err != nil {
     helpers.ErrorResponse(ctx, err)
     return
@@ -219,7 +234,6 @@ helpers.SuccessResponse(ctx, http.StatusOK, out, headers)
 ```
 
 + Additional example: Custom validator and validation tags
-> This is bound to change from a global package-level to some form of per-request or per-app instance in future versions.
 
 ```go
 import (
@@ -248,9 +262,9 @@ func setupValidator() {
 		log.Fatalf("failed to register custom validation: %v", err)
 	}
 
-	// Initialize the framework's validator with your custom instance.
-	// This MUST be done before you define any routes that use validation.
-	validation.InitValidator(v)
+	// Build a validation engine with your custom validator.
+	validationEngine := validation.NewEngine(v)
+	_ = validationEngine
 }
 
 // 3. Use the custom tag in your structs.
