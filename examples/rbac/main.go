@@ -46,6 +46,20 @@ func main() {
 	// - Shorthand constructor version
 	core.GET(routeCtor, "/auth", AuthenticatedResourceHandlerConfig, AuthenticatedResourceHandler)
 	core.GET(routeCtor, "/authEmpty", AuthenticatedEmptyResourceHandlerConfig, AuthenticatedEmptyResourceHandler)
+	router.POST("/dynamicProfile", func(ctx *gin.Context) {
+		core.ExecuteDynamicRoute(
+			ctx,
+			baseRoute,
+			DynamicProfileHandlerConfig,
+			mySessionManager,
+			validationEngine,
+			"dynProfile:input",
+			DynamicProfileInputRules,
+			"dynProfile:output",
+			DynamicProfileOutputRules,
+			DynamicProfileHandler,
+		)
+	})
 
 	httpAddr := fmt.Sprintf("%s:%s", "localhost", "8080")
 	if err := router.Run(httpAddr); err != nil {

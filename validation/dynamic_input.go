@@ -18,11 +18,12 @@ import (
 // Type allows simple coercion for common primitives; defaults to "string".
 // JSONName/FormName/Header provide overrides for binding tags; if empty the field name (lowercased) is used.
 type FieldRule struct {
-	Tags     string `json:"tags" yaml:"tags"`
-	Type     string `json:"type,omitempty" yaml:"type,omitempty"`
-	JSONName string `json:"json,omitempty" yaml:"json,omitempty"`
-	FormName string `json:"form,omitempty" yaml:"form,omitempty"`
-	Header   string `json:"header,omitempty" yaml:"header,omitempty"`
+	Tags     string     `json:"tags" yaml:"tags"`
+	Type     string     `json:"type,omitempty" yaml:"type,omitempty"`
+	JSONName string     `json:"json,omitempty" yaml:"json,omitempty"`
+	FormName string     `json:"form,omitempty" yaml:"form,omitempty"`
+	Header   string     `json:"header,omitempty" yaml:"header,omitempty"`
+	Nested   FieldRules `json:"nested,omitempty" yaml:"nested,omitempty"`
 }
 
 // FieldRules describes a dynamic struct definition keyed by exported field names.
@@ -54,11 +55,19 @@ func (c *dynamicStructCache) Set(key string, value reflect.Type) {
 func resolveFieldType(rule FieldRule) (reflect.Type, error) {
 	typeName := strings.TrimSpace(rule.Type)
 	if strings.HasPrefix(typeName, "[]") {
-		elemType, err := resolveFieldType(FieldRule{Type: strings.TrimPrefix(typeName, "[]")})
+		elemRule := FieldRule{
+			Type:   strings.TrimPrefix(typeName, "[]"),
+			Nested: rule.Nested,
+		}
+		elemType, err := resolveFieldType(elemRule)
 		if err != nil {
 			return nil, err
 		}
 		return reflect.SliceOf(elemType), nil
+	}
+
+	if len(rule.Nested) > 0 {
+		return buildDynamicStructType(rule.Nested)
 	}
 
 	switch strings.ToLower(typeName) {
@@ -229,6 +238,21 @@ func setDynamicFieldValue(field reflect.Value, value interface{}) error {
 		}
 		field.Set(newSlice)
 		return nil
+	}
+
+	// Handle nested structs (Map -> Struct)
+	if field.Kind() == reflect.Struct && source.Kind() == reflect.Map {
+		if mapVal, ok := value.(map[string]interface{}); ok {
+			for i := 0; i < field.NumField(); i++ {
+				structField := field.Type().Field(i)
+				if val, exists := mapVal[structField.Name]; exists {
+					if err := setDynamicFieldValue(field.Field(i), val); err != nil {
+						return err
+					}
+				}
+			}
+			return nil
+		}
 	}
 
 	return fmt.Errorf("cannot assign value of type %T to field type %s", value, field.Type())

@@ -7,6 +7,7 @@ import (
 	"github.com/grzegorzmaniak/gothic/core"
 	"github.com/grzegorzmaniak/gothic/errors"
 	"github.com/grzegorzmaniak/gothic/rbac"
+	"github.com/grzegorzmaniak/gothic/validation"
 )
 
 // AppHandlerContext is a type alias for the specific instantiation of core.Handler
@@ -40,6 +41,27 @@ type ExampleOutput struct {
 	CsrfVersion   string   `json:"csrf_version,omitempty"`   // Example of including CSRF version in the output
 	Tied          bool     `json:"tied,omitempty"`           // Example of including CSRF tied status in the output
 	Authorization string   `header:"Authorization,omitempty"`
+}
+
+var DynamicProfileHandlerConfig = &core.APIConfiguration{
+	SessionRequired: true,
+	Allow:           []string{"guest_session", "user_session"},
+	Permissions: rbac.Permissions{
+		ReadOnlySessionData,
+	},
+	RequireCsrf: false, // keep the demo easy to call
+}
+
+var DynamicProfileInputRules = validation.FieldRules{
+	"Email":      {Tags: "required,email"},
+	"Age":        {Tags: "omitempty,gte=0,lte=120", Type: "int"},
+	"Subscribed": {Tags: "required", Type: "bool", JSONName: "subscribed"},
+}
+
+var DynamicProfileOutputRules = validation.FieldRules{
+	"Message":      {Tags: "required"},
+	"SessionGroup": {Tags: "omitempty"},
+	"ModeHeader":   {Tags: "required", Header: "X-Profile-Mode"},
 }
 
 // BasicActionHandler demonstrates a handler that processes input,
@@ -183,4 +205,27 @@ type AuthenticatedEmptyResourceOutput struct {
 
 func AuthenticatedEmptyResourceHandler(input *ExampleInput, data *AppHandlerContext) (*AuthenticatedResourceOutput, *errors.AppError) {
 	return &AuthenticatedResourceOutput{}, nil
+}
+
+func DynamicProfileHandler(input map[string]interface{}, data *AppHandlerContext) (map[string]any, *errors.AppError) {
+	email, _ := input["Email"].(string)
+	subscribed, _ := input["Subscribed"].(bool)
+
+	var ageText string
+	if age, ok := input["Age"]; ok {
+		ageText = fmt.Sprintf(" Age: %v.", age)
+	}
+
+	message := fmt.Sprintf("Dynamic profile for %s created. Subscribed: %t.%s", email, subscribed, ageText)
+
+	output := map[string]any{
+		"Message":    message,
+		"ModeHeader": "dynamic",
+	}
+
+	if data.SessionGroup != "" {
+		output["SessionGroup"] = data.SessionGroup
+	}
+
+	return output, nil
 }

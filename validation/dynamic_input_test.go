@@ -163,3 +163,135 @@ func TestDynamicOutputData_ValidatorRequired(t *testing.T) {
 		t.Fatal("expected error when validator is missing")
 	}
 }
+
+func TestDynamicInputData_NestedStruct(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	engine := NewEngine(validator.New())
+
+	rules := FieldRules{
+		"User": {
+			Nested: FieldRules{
+				"Name": {Tags: "required"},
+				"Age":  {Tags: "gte=18", Type: "int"},
+			},
+		},
+	}
+
+	jsonBody := `{"user":{"name":"Alice","age":25}}`
+	req := httptest.NewRequest(http.MethodPost, "/dynamic", bytes.NewBufferString(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+	ctx.Request = req
+
+	result, err := DynamicInputData(ctx, engine, "nested_user_rules", rules)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	user, ok := result["User"]
+	if !ok {
+		t.Fatal("expected User field in result")
+	}
+
+	// The result["User"] is a struct (not a map) because DynamicInputData returns map[string]interface{}
+	// where values are the fields of the dynamic struct.
+	// The dynamic struct field "User" is a nested struct.
+	// So user should be a struct.
+
+	userVal := reflect.ValueOf(user)
+	if userVal.Kind() != reflect.Struct {
+		t.Fatalf("expected User to be a struct, got %T", user)
+	}
+
+	nameField := userVal.FieldByName("Name")
+	if !nameField.IsValid() || nameField.String() != "Alice" {
+		t.Fatalf("expected User.Name to be Alice, got %v", nameField)
+	}
+
+	ageField := userVal.FieldByName("Age")
+	if !ageField.IsValid() || ageField.Int() != 25 {
+		t.Fatalf("expected User.Age to be 25, got %v", ageField)
+	}
+}
+
+func TestDynamicInputData_NestedSlice(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	engine := NewEngine(validator.New())
+
+	rules := FieldRules{
+		"Users": {
+			Type: "[]",
+			Nested: FieldRules{
+				"Name": {Tags: "required"},
+			},
+		},
+	}
+
+	jsonBody := `{"users":[{"name":"Alice"},{"name":"Bob"}]}`
+	req := httptest.NewRequest(http.MethodPost, "/dynamic", bytes.NewBufferString(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+	ctx.Request = req
+
+	result, err := DynamicInputData(ctx, engine, "nested_slice_rules", rules)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	users, ok := result["Users"]
+	if !ok {
+		t.Fatal("expected Users field in result")
+	}
+
+	usersVal := reflect.ValueOf(users)
+	if usersVal.Kind() != reflect.Slice {
+		t.Fatalf("expected Users to be a slice, got %T", users)
+	}
+
+	if usersVal.Len() != 2 {
+		t.Fatalf("expected 2 users, got %d", usersVal.Len())
+	}
+
+	firstUser := usersVal.Index(0)
+	if firstUser.FieldByName("Name").String() != "Alice" {
+		t.Fatalf("expected first user name to be Alice")
+	}
+}
+
+func TestDynamicOutputData_NestedStruct(t *testing.T) {
+	engine := NewEngine(validator.New())
+	rules := FieldRules{
+		"User": {
+			Nested: FieldRules{
+				"Name": {Tags: "required"},
+				"Age":  {Tags: "gte=18", Type: "int"},
+			},
+		},
+	}
+
+	output := map[string]interface{}{
+		"User": map[string]interface{}{
+			"Name": "Bob",
+			"Age":  30,
+		},
+	}
+
+	_, body, err := DynamicOutputData(engine, "nested_output_rules", rules, output)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	bodyVal := reflect.ValueOf(body)
+	userField := bodyVal.FieldByName("User")
+	if userField.Kind() != reflect.Struct {
+		t.Fatalf("expected User field to be struct, got %v", userField.Kind())
+	}
+
+	if userField.FieldByName("Name").String() != "Bob" {
+		t.Fatalf("expected User.Name to be Bob")
+	}
+}
